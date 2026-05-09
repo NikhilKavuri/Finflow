@@ -26,12 +26,32 @@ export function formatDate(dateStr: string): string {
 }
 
 export function getTodayISO(): string {
-  return new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
 
 export function getCurrentMonthPrefix(): string {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+export function getPreviousMonthPrefix(): string {
+  const now = new Date();
+  now.setMonth(now.getMonth() - 1);
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+export function formatMonthLabel(monthPrefix: string): string {
+  const [year, month] = monthPrefix.split("-").map(Number);
+  return new Date(year, month - 1, 1).toLocaleDateString("en-IN", {
+    month: "long",
+    year: "numeric",
+  });
+}
+
+export function getDaysInMonth(monthPrefix: string): number {
+  const [year, month] = monthPrefix.split("-").map(Number);
+  return new Date(year, month, 0).getDate();
 }
 
 export function groupByDate(

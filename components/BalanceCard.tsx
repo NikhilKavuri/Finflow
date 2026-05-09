@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { motion, useMotionValue, useTransform, animate } from "framer-motion";
+import { Pencil } from "lucide-react";
 import { formatINR } from "@/lib/utils";
 
 interface Props {
@@ -9,11 +9,13 @@ interface Props {
   totalSpent: number;
   budget: number;
   pct: number;
+  editable?: boolean;
+  onEditBudget: () => void;
 }
 
 const CIRC = 2 * Math.PI * 32;
 
-export default function BalanceCard({ balance, totalSpent, budget, pct }: Props) {
+export default function BalanceCard({ balance, totalSpent, budget, pct, editable = true, onEditBudget }: Props) {
   const ringRef = useRef<SVGCircleElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
 
@@ -51,9 +53,21 @@ export default function BalanceCard({ balance, totalSpent, budget, pct }: Props)
 
       <div className="relative z-10 flex items-end justify-between">
         {/* Left */}
-        <div>
-          <div className="text-[11px] font-semibold text-[#5a5a6e] tracking-widest uppercase mb-1">
-            Balance Left
+        <div className="min-w-0 pr-3">
+          <div className="mb-1 flex items-center gap-2">
+            <div className="text-[11px] font-semibold text-[#5a5a6e] tracking-widest uppercase">
+              Balance Left
+            </div>
+            {editable && (
+              <button
+                type="button"
+                onClick={onEditBudget}
+                className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-[#9898aa] transition-colors hover:text-white"
+                aria-label="Edit budget"
+              >
+                <Pencil size={13} />
+              </button>
+            )}
           </div>
           <div className="font-syne text-4xl font-black text-white leading-none mb-1">
             {formatINR(balance)}

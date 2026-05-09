@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react";
 import type { AppState, Transaction } from "@/lib/types";
-import { SAMPLE_TRANSACTIONS } from "@/lib/sampleData";
 import { getTodayISO } from "@/lib/utils";
 
 const STORAGE_KEY = "finflow_state";
@@ -18,7 +17,13 @@ function loadState(): AppState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_STATE;
-    return { ...DEFAULT_STATE, ...JSON.parse(raw) };
+    const parsed = { ...DEFAULT_STATE, ...JSON.parse(raw) };
+    return {
+      ...parsed,
+      transactions: Array.isArray(parsed.transactions)
+        ? parsed.transactions.filter((tx: Transaction) => !/^s\d+$/.test(tx.id))
+        : [],
+    };
   } catch {
     return DEFAULT_STATE;
   }
@@ -53,18 +58,18 @@ export function useExpenses() {
         ...prev,
         budget,
         onboarded: true,
-        transactions: prev.transactions.length === 0 ? SAMPLE_TRANSACTIONS : prev.transactions,
+        transactions: [],
       }));
     },
     [updateState]
   );
 
   const addTransaction = useCallback(
-    (tx: Omit<Transaction, "id" | "date">) => {
+    (tx: Omit<Transaction, "id">) => {
       const newTx: Transaction = {
         ...tx,
         id: `tx_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-        date: getTodayISO(),
+        date: tx.date || getTodayISO(),
       };
       updateState((prev) => ({
         ...prev,
@@ -85,8 +90,13 @@ export function useExpenses() {
     [updateState]
   );
 
-  const clearAll = useCallback(() => {
-    updateState((prev) => ({ ...prev, transactions: [] }));
+  const clearAll = useCallback((monthPrefix?: string) => {
+    updateState((prev) => ({
+      ...prev,
+      transactions: monthPrefix
+        ? prev.transactions.filter((tx) => !tx.date.startsWith(monthPrefix))
+        : [],
+    }));
   }, [updateState]);
 
   const updateBudget = useCallback(

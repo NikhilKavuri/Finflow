@@ -7,12 +7,13 @@ import { getCategoryById } from "@/lib/categories";
 import { formatINR, formatDate, groupByDate } from "@/lib/utils";
 
 interface Props {
+  editable?: boolean;
   transactions: Transaction[];
   onDelete: (id: string) => void;
   onClearAll: () => void;
 }
 
-export default function SpendFeed({ transactions, onDelete, onClearAll }: Props) {
+export default function SpendFeed({ editable = true, transactions, onDelete, onClearAll }: Props) {
   const groups = groupByDate(transactions);
   const dates = Object.keys(groups).sort((a, b) => (a > b ? -1 : 1));
 
@@ -20,7 +21,7 @@ export default function SpendFeed({ transactions, onDelete, onClearAll }: Props)
     <div className="mb-6">
       <div className="flex items-center justify-between mb-3">
         <h2 className="font-syne text-[15px] font-bold text-white">Spend Feed</h2>
-        {transactions.length > 0 && (
+        {editable && transactions.length > 0 && (
           <button onClick={onClearAll} className="text-xs text-[#5a5a6e] hover:text-[#ff4f6b] transition-colors">
             Clear All
           </button>
@@ -43,7 +44,7 @@ export default function SpendFeed({ transactions, onDelete, onClearAll }: Props)
                 </div>
                 <div className="flex flex-col gap-1.5">
                   {groups[date].map((tx, i) => (
-                    <TxItem key={tx.id} tx={tx} index={i} onDelete={onDelete} />
+                    <TxItem key={tx.id} editable={editable} tx={tx} index={i} onDelete={onDelete} />
                   ))}
                 </div>
               </div>
@@ -55,7 +56,17 @@ export default function SpendFeed({ transactions, onDelete, onClearAll }: Props)
   );
 }
 
-function TxItem({ tx, index, onDelete }: { tx: Transaction; index: number; onDelete: (id: string) => void }) {
+function TxItem({
+  editable,
+  tx,
+  index,
+  onDelete,
+}: {
+  editable: boolean;
+  tx: Transaction;
+  index: number;
+  onDelete: (id: string) => void;
+}) {
   const cat = getCategoryById(tx.category);
   return (
     <motion.div
@@ -77,15 +88,17 @@ function TxItem({ tx, index, onDelete }: { tx: Transaction; index: number; onDel
       <div className={`font-syne text-[15px] font-bold flex-shrink-0 ${tx.type === "income" ? "text-[#2ce88a]" : "text-[#ff4f6b]"}`}>
         {tx.type === "income" ? "+" : "-"}{formatINR(tx.amount)}
       </div>
-      <motion.button
-        whileTap={{ scale: 0.85 }}
-        onClick={() => onDelete(tx.id)}
-        className="opacity-0 group-hover:opacity-100 transition-opacity ml-1 w-7 h-7 rounded-lg flex items-center justify-center text-[#ff4f6b]"
-        style={{ background: "rgba(255,79,107,0.1)" }}
-        aria-label="Delete"
-      >
-        <Trash2 size={13} />
-      </motion.button>
+      {editable && (
+        <motion.button
+          whileTap={{ scale: 0.85 }}
+          onClick={() => onDelete(tx.id)}
+          className="opacity-0 group-hover:opacity-100 transition-opacity ml-1 w-7 h-7 rounded-lg flex items-center justify-center text-[#ff4f6b]"
+          style={{ background: "rgba(255,79,107,0.1)" }}
+          aria-label="Delete"
+        >
+          <Trash2 size={13} />
+        </motion.button>
+      )}
     </motion.div>
   );
 }
