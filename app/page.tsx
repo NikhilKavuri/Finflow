@@ -99,18 +99,6 @@ export default function HomePage() {
 
           <BottomNav onAddClick={() => setDrawerOpen(true)} />
 
-          {/* FAB */}
-          <motion.button
-            className="fixed bottom-24 left-1/2 -ml-7 z-40 w-14 h-14 rounded-full flex items-center justify-center text-white text-3xl font-light glow-accent"
-            style={{ background: "linear-gradient(135deg, #6c47ff, #8b6fff)" }}
-            whileTap={{ scale: 0.9 }}
-            whileHover={{ scale: 1.08 }}
-            onClick={() => setDrawerOpen(true)}
-            aria-label="Add expense"
-          >
-            +
-          </motion.button>
-
           <AnimatePresence>
             {drawerOpen && (
               <ExpenseDrawer

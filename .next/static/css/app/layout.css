@@ -556,6 +556,15 @@ video {
 .top-20 {
   top: 5rem;
 }
+.top-1\/2 {
+  top: 50%;
+}
+.bottom-5 {
+  bottom: 1.25rem;
+}
+.bottom-\[50\%\] {
+  bottom: 50%;
+}
 .z-10 {
   z-index: 10;
 }
@@ -630,6 +639,9 @@ video {
 }
 .-ml-7 {
   margin-left: -1.75rem;
+}
+.-mt-7 {
+  margin-top: -1.75rem;
 }
 .block {
   display: block;
