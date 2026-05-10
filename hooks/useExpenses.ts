@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import type { AppState, Transaction } from "@/lib/types";
+import type { AppState, Transaction, Bank } from "@/lib/types";
 import { getTodayISO } from "@/lib/utils";
 
 const STORAGE_KEY = "finflow_state";
@@ -10,6 +10,7 @@ const DEFAULT_STATE: AppState = {
   budget: 80000,
   transactions: [],
   onboarded: false,
+  banks: [{ id: "default", name: "Default Bank" }],
 };
 
 function loadState(): AppState {
@@ -21,8 +22,11 @@ function loadState(): AppState {
     return {
       ...parsed,
       transactions: Array.isArray(parsed.transactions)
-        ? parsed.transactions.filter((tx: Transaction) => !/^s\d+$/.test(tx.id))
+        ? parsed.transactions
+            .filter((tx: Transaction) => !/^s\d+$/.test(tx.id))
+            .map((tx: any) => ({ ...tx, bankId: tx.bankId || "default" }))
         : [],
+      banks: Array.isArray(parsed.banks) ? parsed.banks : DEFAULT_STATE.banks,
     };
   } catch {
     return DEFAULT_STATE;
@@ -70,6 +74,7 @@ export function useExpenses() {
         ...tx,
         id: `tx_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
         date: tx.date || getTodayISO(),
+        bankId: tx.bankId || "default",
       };
       updateState((prev) => ({
         ...prev,
@@ -118,6 +123,44 @@ export function useExpenses() {
     [updateState]
   );
 
+  const addBank = useCallback(
+    (bank: Omit<Bank, "id">) => {
+      const newBank: Bank = {
+        ...bank,
+        id: `bank_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      };
+      updateState((prev) => ({
+        ...prev,
+        banks: [...prev.banks, newBank],
+      }));
+      return newBank;
+    },
+    [updateState]
+  );
+
+  const updateBank = useCallback(
+    (id: string, updates: Partial<Bank>) => {
+      updateState((prev) => ({
+        ...prev,
+        banks: prev.banks.map((bank) => (bank.id === id ? { ...bank, ...updates } : bank)),
+      }));
+    },
+    [updateState]
+  );
+
+  const deleteBank = useCallback(
+    (id: string) => {
+      updateState((prev) => ({
+        ...prev,
+        banks: prev.banks.filter((bank) => bank.id !== id),
+        transactions: prev.transactions.map((tx) =>
+          tx.bankId === id ? { ...tx, bankId: "default" } : tx
+        ),
+      }));
+    },
+    [updateState]
+  );
+
   return {
     state,
     hydrated,
@@ -127,5 +170,8 @@ export function useExpenses() {
     clearAll,
     clearCategory,
     updateBudget,
+    addBank,
+    updateBank,
+    deleteBank,
   };
 }

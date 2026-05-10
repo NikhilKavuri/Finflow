@@ -1,12 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { useExpenses } from "@/hooks/useExpenses";
 import { getCategoryById } from "@/lib/categories";
 import { getCurrentMonthPrefix, getDaysInMonth, getPreviousMonthPrefix } from "@/lib/utils";
 import Onboarding from "@/components/Onboarding";
 import TopNav from "@/components/TopNav";
+import BankFilter from "@/components/BankFilter";
 import BalanceCard from "@/components/BalanceCard";
 import QuickStats from "@/components/QuickStats";
 import CategoryBreakdown from "@/components/CategoryBreakdown";
@@ -17,12 +19,14 @@ import BudgetDrawer from "@/components/BudgetDrawer";
 import Toast from "@/components/Toast";
 
 export default function HomePage() {
+  const router = useRouter();
   const { state, hydrated, completeOnboarding, addTransaction, deleteTransaction, clearAll, clearCategory, updateBudget } =
     useExpenses();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [budgetOpen, setBudgetOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const [selectedBankId, setSelectedBankId] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState("");
   const currentMonth = getCurrentMonthPrefix();
   const previousMonth = getPreviousMonthPrefix();
@@ -34,9 +38,16 @@ export default function HomePage() {
     setTimeout(() => setToast(null), 2600);
   };
 
+  // Initialize bank if not in list (skip for "all")
+  useEffect(() => {
+    if (selectedBankId !== "all" && !state.banks.find((b) => b.id === selectedBankId)) {
+      setSelectedBankId("all");
+    }
+  }, [state.banks, selectedBankId]);
+
   const monthTxs = useMemo(
-    () => state.transactions.filter((t) => t.date.startsWith(selectedMonth)),
-    [state.transactions, selectedMonth]
+    () => state.transactions.filter((t) => t.date.startsWith(selectedMonth) && (selectedBankId === "all" || t.bankId === selectedBankId)),
+    [state.transactions, selectedMonth, selectedBankId]
   );
   const expenses = useMemo(() => monthTxs.filter((t) => t.type === "expense"), [monthTxs]);
   const income = useMemo(() => monthTxs.filter((t) => t.type === "income"), [monthTxs]);
@@ -76,6 +87,12 @@ export default function HomePage() {
             previousMonth={previousMonth}
             selectedMonth={selectedMonth}
             onMonthChange={setSelectedMonth}
+          />
+
+          <BankFilter
+            banks={state.banks}
+            selectedBankId={selectedBankId}
+            onBankChange={setSelectedBankId}
           />
 
           <main className="flex-1 px-4 space-y-0">
@@ -138,6 +155,7 @@ export default function HomePage() {
                       searchable
                       searchPlaceholder={`Search in ${selectedCategory.name}`}
                       transactions={filteredCategoryTxs}
+                      banks={state.banks}
                       onDelete={(id) => {
                         if (!isCurrentMonth) return;
                         deleteTransaction(id);
@@ -168,11 +186,12 @@ export default function HomePage() {
             </motion.div>
           </main>
 
-          <BottomNav disabled={!isCurrentMonth} onAddClick={() => setDrawerOpen(true)} />
+          <BottomNav disabled={!isCurrentMonth} onAddClick={() => setDrawerOpen(true)} onProfileClick={() => router.push('/profile')} />
 
           <AnimatePresence>
             {drawerOpen && (
               <ExpenseDrawer
+                banks={state.banks}
                 onClose={() => setDrawerOpen(false)}
                 onSubmit={(data) => {
                   addTransaction(data);

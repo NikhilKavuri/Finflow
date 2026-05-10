@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Trash2 } from "lucide-react";
-import type { Transaction } from "@/lib/types";
+import type { Transaction, Bank } from "@/lib/types";
 import { getCategoryById } from "@/lib/categories";
 import { formatINR, formatDate, groupByDate } from "@/lib/utils";
 
@@ -15,6 +15,7 @@ interface Props {
   searchPlaceholder?: string;
   onDelete: (id: string) => void;
   onClearAll: () => void;
+  banks: Bank[];
 }
 
 export default function SpendFeed({
@@ -25,6 +26,7 @@ export default function SpendFeed({
   searchPlaceholder,
   onDelete,
   onClearAll,
+  banks,
 }: Props) {
   const [query, setQuery] = useState("");
   const filteredTransactions = useMemo(() => {
@@ -86,7 +88,7 @@ export default function SpendFeed({
                 </div>
                 <div className="flex flex-col gap-1">
                   {groups[date].map((tx, i) => (
-                    <TxItem key={tx.id} editable={editable} tx={tx} index={i} onDelete={onDelete} />
+                    <TxItem key={tx.id} editable={editable} tx={tx} index={i} onDelete={onDelete} banks={banks} />
                   ))}
                 </div>
               </div>
@@ -103,13 +105,17 @@ function TxItem({
   tx,
   index,
   onDelete,
+  banks,
 }: {
   editable: boolean;
   tx: Transaction;
   index: number;
   onDelete: (id: string) => void;
+  banks: Bank[];
 }) {
   const cat = getCategoryById(tx.category);
+  const bank = banks.find((b) => b.id === tx.bankId);
+  const bankName = bank?.name || "Bank";
   return (
     <motion.div
       layout
@@ -117,7 +123,7 @@ function TxItem({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, x: -20, height: 0, marginBottom: 0 }}
       transition={{ duration: 0.3, delay: index * 0.03 }}
-      className="group flex items-center gap-2 px-3 py-2 bg-[#1e1e28] border border-white/[0.06] rounded-xl hover:bg-[#252533] hover:border-white/10 transition-all duration-200"
+      className="group flex items-center gap-2 px-3 py-2.5 bg-[#1e1e28] border border-white/[0.06] rounded-xl hover:bg-[#252533] hover:border-white/10 transition-all duration-200"
     >
       <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0"
         style={{ background: cat.color + "22" }}>
@@ -125,7 +131,10 @@ function TxItem({
       </div>
       <div className="flex-1 min-w-0">
         <div className="text-[14px] font-medium text-white truncate">{tx.name}</div>
-        <div className="text-[11px] text-[#5a5a6e] mt-0.5">{cat.name}</div>
+        <div className="text-[11px] text-[#5a5a6e] mt-0.5 flex items-center gap-1.5">
+          <span>{cat.name}</span>
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#6c47ff]/15 text-[10px] font-semibold text-[#8b6fff]">🏦 {bankName}</span>
+        </div>
       </div>
       <div className={`font-syne text-[15px] font-bold flex-shrink-0 ${tx.type === "income" ? "text-[#2ce88a]" : "text-[#ff4f6b]"}`}>
         {tx.type === "income" ? "+" : "-"}{formatINR(tx.amount)}

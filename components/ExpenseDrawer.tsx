@@ -1,26 +1,30 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { motion } from "framer-motion";
-import { CalendarDays, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { CalendarDays, X, Check, ChevronDown } from "lucide-react";
 import { CATEGORIES, type Category } from "@/lib/categories";
 import { classifyExpense } from "@/lib/classifier";
-import type { Transaction } from "@/lib/types";
+import type { Transaction, Bank } from "@/lib/types";
 import { formatDate, formatMonthLabel, getCurrentMonthPrefix, getTodayISO } from "@/lib/utils";
 
 interface Props {
   onClose: () => void;
   onSubmit: (data: Omit<Transaction, "id">) => void;
+  banks: Bank[];
 }
 
 type TxType = "expense" | "income";
 
-export default function ExpenseDrawer({ onClose, onSubmit }: Props) {
+export default function ExpenseDrawer({ onClose, onSubmit, banks }: Props) {
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(getTodayISO());
   const [selectedCat, setSelectedCat] = useState<string | null>(null);
   const [txType, setTxType] = useState<TxType>("expense");
+  const [selectedBankId, setSelectedBankId] = useState<string>(banks[0]?.id || "default");
+  const [bankDropdownOpen, setBankDropdownOpen] = useState(false);
+  const bankDropdownRef = useRef<HTMLDivElement>(null);
   const [aiSuggest, setAiSuggest] = useState<Category | null>(null);
   const [error, setError] = useState("");
   const currentMonth = getCurrentMonthPrefix();
@@ -28,6 +32,8 @@ export default function ExpenseDrawer({ onClose, onSubmit }: Props) {
   const currentDay = Number(today.slice(8, 10));
   const selectedDay = Number(date.slice(8, 10));
   const monthDays = Array.from({ length: currentDay }, (_, index) => index + 1);
+
+  const selectedBank = banks.find((b) => b.id === selectedBankId) ?? banks[0];
 
   useEffect(() => {
     const root = document.documentElement;
@@ -53,6 +59,19 @@ export default function ExpenseDrawer({ onClose, onSubmit }: Props) {
     };
   }, []);
 
+  // Close bank dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (bankDropdownRef.current && !bankDropdownRef.current.contains(event.target as Node)) {
+        setBankDropdownOpen(false);
+      }
+    };
+    if (bankDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [bankDropdownOpen]);
+
   const handleNameChange = useCallback((val: string) => {
     setName(val);
     const cat = classifyExpense(val);
@@ -71,7 +90,7 @@ export default function ExpenseDrawer({ onClose, onSubmit }: Props) {
     if (isNaN(amt) || amt <= 0) { setError("Enter a valid amount."); return; }
     if (!date.startsWith(currentMonth)) { setError("Only the current month can be edited."); return; }
     const cat = selectedCat ?? aiSuggest?.id ?? "other";
-    onSubmit({ name: name.trim(), amount: amt, category: cat, type: txType, date });
+    onSubmit({ name: name.trim(), amount: amt, category: cat, type: txType, date, bankId: selectedBankId });
   };
 
   return (
@@ -233,6 +252,85 @@ export default function ExpenseDrawer({ onClose, onSubmit }: Props) {
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Bank - Custom Dropdown */}
+          <div className="mb-4 relative" ref={bankDropdownRef}>
+            <label className="block text-[11px] font-semibold text-[#5a5a6e] tracking-widest uppercase mb-2">Bank Account</label>
+            <motion.button
+              type="button"
+              onClick={() => setBankDropdownOpen((v) => !v)}
+              whileTap={{ scale: 0.98 }}
+              className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left transition-all duration-300 ${
+                bankDropdownOpen
+                  ? "border-[#8b6fff]/60 bg-[#1e1e28] shadow-[0_0_20px_rgba(108,71,255,0.12)] ring-2 ring-[#6c47ff]/20"
+                  : "border-white/10 bg-[#1e1e28] hover:border-white/20"
+              }`}
+            >
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#6c47ff]/15 text-sm flex-shrink-0">
+                🏦
+              </div>
+              <span className="flex-1 text-base text-white font-medium truncate">{selectedBank?.name}</span>
+              <motion.div
+                animate={{ rotate: bankDropdownOpen ? 180 : 0 }}
+                transition={{ duration: 0.2, ease: "easeInOut" }}
+              >
+                <ChevronDown size={18} className="text-[#5a5a6e]" />
+              </motion.div>
+            </motion.button>
+
+            <AnimatePresence>
+              {bankDropdownOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -6, scale: 0.97 }}
+                  transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
+                  className="absolute left-0 right-0 top-[calc(100%+4px)] z-50 overflow-hidden rounded-xl border border-white/[0.08] bg-[#141419]/95 shadow-[0_12px_40px_rgba(0,0,0,0.5)] backdrop-blur-xl"
+                >
+                  {banks.map((bank, i) => {
+                    const active = bank.id === selectedBankId;
+                    return (
+                      <motion.button
+                        key={bank.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedBankId(bank.id);
+                          setBankDropdownOpen(false);
+                        }}
+                        initial={{ opacity: 0, x: -6 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ duration: 0.12, delay: i * 0.03 }}
+                        className={`flex w-full items-center gap-3 px-4 py-3 text-left transition-all duration-200 ${
+                          active
+                            ? "bg-gradient-to-r from-[#6c47ff]/15 to-transparent border-l-2 border-[#8b6fff]"
+                            : "hover:bg-white/[0.04]"
+                        }`}
+                      >
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#6c47ff]/10 text-sm">
+                          🏦
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-semibold text-white truncate">{bank.name}</div>
+                          {bank.balance !== undefined && (
+                            <div className="text-[10px] font-medium text-[#5a5a6e]">₹{bank.balance.toLocaleString()}</div>
+                          )}
+                        </div>
+                        {active && (
+                          <motion.div
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            transition={{ type: "spring", stiffness: 500, damping: 20 }}
+                          >
+                            <Check size={16} className="text-[#8b6fff]" />
+                          </motion.div>
+                        )}
+                      </motion.button>
+                    );
+                  })}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* Category Picker */}

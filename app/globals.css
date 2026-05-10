@@ -134,3 +134,46 @@ input[type="number"] { -moz-appearance: textfield; }
     height: min(88svh, calc(var(--visual-viewport-height, 100svh) - 12px));
   }
 }
+
+/* Profile icon animations */
+.profile-icon-glow {
+  animation: profilePulse 3s ease-in-out infinite;
+}
+
+.profile-ring-rotate {
+  background: conic-gradient(
+    from 0deg,
+    transparent 0%,
+    rgba(108, 71, 255, 0.6) 25%,
+    transparent 50%,
+    rgba(184, 255, 87, 0.4) 75%,
+    transparent 100%
+  );
+  border-radius: 50%;
+  animation: profileRingRotate 4s linear infinite;
+  mask: radial-gradient(circle, transparent 68%, black 70%);
+  -webkit-mask: radial-gradient(circle, transparent 68%, black 70%);
+}
+
+.profile-glow-ring {
+  background: radial-gradient(circle, rgba(108, 71, 255, 0.3), transparent 70%);
+  filter: blur(8px);
+}
+
+@keyframes profilePulse {
+  0%, 100% {
+    box-shadow: 0 4px 16px rgba(108, 71, 255, 0.25);
+  }
+  50% {
+    box-shadow: 0 4px 24px rgba(108, 71, 255, 0.45), 0 0 40px rgba(139, 111, 255, 0.15);
+  }
+}
+
+@keyframes profileRingRotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
