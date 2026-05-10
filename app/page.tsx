@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useExpenses } from "@/hooks/useExpenses";
+import { getCategoryById } from "@/lib/categories";
 import { getCurrentMonthPrefix, getDaysInMonth, getPreviousMonthPrefix } from "@/lib/utils";
 import Onboarding from "@/components/Onboarding";
 import TopNav from "@/components/TopNav";
@@ -16,11 +17,13 @@ import BudgetDrawer from "@/components/BudgetDrawer";
 import Toast from "@/components/Toast";
 
 export default function HomePage() {
-  const { state, hydrated, completeOnboarding, addTransaction, deleteTransaction, clearAll, updateBudget } =
+  const { state, hydrated, completeOnboarding, addTransaction, deleteTransaction, clearAll, clearCategory, updateBudget } =
     useExpenses();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [budgetOpen, setBudgetOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
   const currentMonth = getCurrentMonthPrefix();
   const previousMonth = getPreviousMonthPrefix();
   const [selectedMonth, setSelectedMonth] = useState(currentMonth);
@@ -37,6 +40,19 @@ export default function HomePage() {
   );
   const expenses = useMemo(() => monthTxs.filter((t) => t.type === "expense"), [monthTxs]);
   const income = useMemo(() => monthTxs.filter((t) => t.type === "income"), [monthTxs]);
+  const selectedCategory = selectedCategoryId ? getCategoryById(selectedCategoryId) : null;
+  const categoryTxs = useMemo(
+    () =>
+      selectedCategoryId
+        ? monthTxs.filter((t) => t.category === selectedCategoryId && t.type === "expense")
+        : [],
+    [monthTxs, selectedCategoryId]
+  );
+  const filteredCategoryTxs = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
+    if (!query) return categoryTxs;
+    return categoryTxs.filter((t) => t.name.toLowerCase().includes(query));
+  }, [categoryTxs, searchTerm]);
 
   const totalSpent = useMemo(() => expenses.reduce((s, t) => s + t.amount, 0), [expenses]);
   const totalIncome = useMemo(() => income.reduce((s, t) => s + t.amount, 0), [income]);
@@ -91,7 +107,14 @@ export default function HomePage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.2, ease: [0.4, 0, 0.2, 1] }}
             >
-              <CategoryBreakdown expenses={expenses} />
+              <CategoryBreakdown
+                expenses={expenses}
+                selectedCategoryId={selectedCategoryId}
+                onCategorySelect={(id) => {
+                  setSelectedCategoryId((current) => (current === id ? null : id));
+                  setSearchTerm("");
+                }}
+              />
             </motion.div>
 
             <motion.div
@@ -99,20 +122,49 @@ export default function HomePage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.3, ease: [0.4, 0, 0.2, 1] }}
             >
-              <SpendFeed
-                editable={isCurrentMonth}
-                transactions={monthTxs.slice(0, 50)}
-                onDelete={(id) => {
-                  if (!isCurrentMonth) return;
-                  deleteTransaction(id);
-                  showToast("Transaction removed");
-                }}
-                onClearAll={() => {
-                  if (!isCurrentMonth) return;
-                  clearAll(currentMonth);
-                  showToast("All transactions cleared");
-                }}
-              />
+              <AnimatePresence initial={false} mode="wait">
+                {selectedCategory ? (
+                  <motion.div
+                    key="category-feed"
+                    initial={{ opacity: 0, height: 0, scale: 0.98 }}
+                    animate={{ opacity: 1, height: "auto", scale: 1 }}
+                    exit={{ opacity: 0, height: 0, scale: 0.98 }}
+                    transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
+                    className="overflow-hidden"
+                  >
+                    <SpendFeed
+                      title={`${selectedCategory.name} feed`}
+                      editable={isCurrentMonth}
+                      searchable
+                      searchPlaceholder={`Search in ${selectedCategory.name}`}
+                      transactions={filteredCategoryTxs}
+                      onDelete={(id) => {
+                        if (!isCurrentMonth) return;
+                        deleteTransaction(id);
+                        showToast("Transaction removed");
+                      }}
+                      onClearAll={() => {
+                        if (!isCurrentMonth || !selectedCategoryId) return;
+                        clearCategory(selectedCategoryId, currentMonth);
+                        showToast("Category transactions cleared");
+                      }}
+                    />
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="feed-placeholder"
+                    initial={{ opacity: 0, height: 0, scale: 0.98 }}
+                    animate={{ opacity: 1, height: "auto", scale: 1 }}
+                    exit={{ opacity: 0, height: 0, scale: 0.98 }}
+                    transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
+                    className="overflow-hidden"
+                  >
+                    <div className="rounded-3xl border border-white/[0.06] bg-[#15151d] px-4 py-7 text-center text-sm text-[#9a9aa8]">
+                      Tap a category above to view its spend feed.
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.div>
           </main>
 

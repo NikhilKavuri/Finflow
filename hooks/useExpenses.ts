@@ -99,6 +99,18 @@ export function useExpenses() {
     }));
   }, [updateState]);
 
+  const clearCategory = useCallback(
+    (categoryId: string, monthPrefix?: string) => {
+      updateState((prev) => ({
+        ...prev,
+        transactions: prev.transactions.filter(
+          (tx) => tx.category !== categoryId || (monthPrefix ? !tx.date.startsWith(monthPrefix) : false)
+        ),
+      }));
+    },
+    [updateState]
+  );
+
   const updateBudget = useCallback(
     (budget: number) => {
       updateState((prev) => ({ ...prev, budget }));
@@ -113,6 +125,7 @@ export function useExpenses() {
     addTransaction,
     deleteTransaction,
     clearAll,
+    clearCategory,
     updateBudget,
   };
 }

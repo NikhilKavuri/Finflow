@@ -10,9 +10,9 @@ interface Props {
 
 export default function BottomNav({ disabled = false, onAddClick }: Props) {
   return (
-    <nav className="mobile-footer fixed bottom-0 left-0 right-0 z-30 mx-auto h-20 w-full max-w-[480px] glass-nav border-t border-white/[0.06]">
+    <nav className="mobile-footer fixed bottom-0 rounded-t-lg left-0 right-0 z-30 mx-auto h-10 w-full max-w-[480px] glass-footer border-t border-white/[0.06] py-1 px-2">
       <motion.button
-        className="absolute left-1/2 top-1/2 -ml-7 -mt-7 z-40 w-14 h-14 rounded-full flex items-center justify-center text-white glow-accent disabled:cursor-not-allowed disabled:opacity-45"
+        className="absolute left-1/2 top-0 -ml-5 -mt-5 z-40 w-12 h-12 rounded-full flex items-center justify-center text-white disabled:cursor-not-allowed disabled:opacity-45 shadow-lg"
         style={{
           background: disabled
             ? "linear-gradient(135deg, #343444, #242430)"
@@ -24,7 +24,7 @@ export default function BottomNav({ disabled = false, onAddClick }: Props) {
         disabled={disabled}
         aria-label="Add expense"
       >
-        <Plus size={28} strokeWidth={2.4} />
+        <Plus size={20} strokeWidth={2.4} />
       </motion.button>
     </nav>
   );

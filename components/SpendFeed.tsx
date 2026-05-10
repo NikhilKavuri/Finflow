@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Trash2 } from "lucide-react";
 import type { Transaction } from "@/lib/types";
@@ -9,40 +10,81 @@ import { formatINR, formatDate, groupByDate } from "@/lib/utils";
 interface Props {
   editable?: boolean;
   transactions: Transaction[];
+  title?: string;
+  searchable?: boolean;
+  searchPlaceholder?: string;
   onDelete: (id: string) => void;
   onClearAll: () => void;
 }
 
-export default function SpendFeed({ editable = true, transactions, onDelete, onClearAll }: Props) {
-  const groups = groupByDate(transactions);
+export default function SpendFeed({
+  editable = true,
+  transactions,
+  title,
+  searchable = false,
+  searchPlaceholder,
+  onDelete,
+  onClearAll,
+}: Props) {
+  const [query, setQuery] = useState("");
+  const filteredTransactions = useMemo(() => {
+    const trimmed = query.trim().toLowerCase();
+    if (!trimmed) return transactions;
+    return transactions.filter((tx) => tx.name.toLowerCase().includes(trimmed));
+  }, [query, transactions]);
+
+  const groups = groupByDate(filteredTransactions);
   const dates = Object.keys(groups).sort((a, b) => (a > b ? -1 : 1));
 
   return (
-    <div className="mb-6">
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="font-syne text-[15px] font-bold text-white">Spend Feed</h2>
-        {editable && transactions.length > 0 && (
-          <button onClick={onClearAll} className="text-xs text-[#5a5a6e] hover:text-[#ff4f6b] transition-colors">
-            Clear All
-          </button>
-        )}
+    <div className="mb-4">
+      <div className="flex flex-col gap-2 mb-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="font-syne text-[15px] font-bold text-white">{title ?? "Spend Feed"}</h2>
+          {searchable && (
+            <p className="text-[11px] text-[#8b6fff] mt-1">
+              Filter this category's expenses by name.
+            </p>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          {editable && filteredTransactions.length > 0 && (
+            <button onClick={onClearAll} className="text-[10px] text-[#5a5a6e] hover:text-[#ff4f6b] transition-colors">
+              Clear All
+            </button>
+          )}
+        </div>
       </div>
 
-      {transactions.length === 0 ? (
-        <div className="text-center py-10">
+      {searchable && (
+        <div className="mb-3">
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            className="w-full rounded-xl border border-white/10 bg-[#1e1e28] px-3 py-2.5 text-sm text-white placeholder:text-[#5a5a6e] outline-none focus:border-[#8b6fff] transition-colors"
+            placeholder={searchPlaceholder ?? "Search expenses..."}
+          />
+        </div>
+      )}
+
+      {filteredTransactions.length === 0 ? (
+        <div className="text-center py-8">
           <div className="text-4xl mb-3">🧾</div>
           <p className="font-syne text-sm font-bold text-white">No transactions</p>
-          <p className="text-xs text-[#5a5a6e] mt-1">Tap + to log your first expense</p>
+          <p className="text-xs text-[#5a5a6e] mt-1">
+            {query ? "No matching expenses found" : "Tap + to log your first expense"}
+          </p>
         </div>
       ) : (
         <div className="flex flex-col gap-0">
           <AnimatePresence>
             {dates.map((date) => (
               <div key={date}>
-                <div className="text-[11px] font-semibold text-[#5a5a6e] tracking-widest uppercase py-2">
+                <div className="text-[11px] font-semibold text-[#5a5a6e] tracking-widest uppercase py-1.5">
                   {formatDate(date)}
                 </div>
-                <div className="flex flex-col gap-1.5">
+                <div className="flex flex-col gap-1">
                   {groups[date].map((tx, i) => (
                     <TxItem key={tx.id} editable={editable} tx={tx} index={i} onDelete={onDelete} />
                   ))}
@@ -75,7 +117,7 @@ function TxItem({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, x: -20, height: 0, marginBottom: 0 }}
       transition={{ duration: 0.3, delay: index * 0.03 }}
-      className="group flex items-center gap-3 px-3 py-3 bg-[#1e1e28] border border-white/[0.06] rounded-xl hover:bg-[#252533] hover:border-white/10 transition-all duration-200"
+      className="group flex items-center gap-2 px-3 py-2 bg-[#1e1e28] border border-white/[0.06] rounded-xl hover:bg-[#252533] hover:border-white/10 transition-all duration-200"
     >
       <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0"
         style={{ background: cat.color + "22" }}>
