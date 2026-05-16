@@ -1,10 +1,14 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { AppState, Transaction, Bank } from "@/lib/types";
 import { getTodayISO } from "@/lib/utils";
+import { ensureAnonymousAuth } from "@/lib/firebase";
+import { syncExpensesToFirestore, loadExpensesFromFirestore } from "@/lib/firestore";
 
 const STORAGE_KEY = "finflow_state";
+const UID_KEY = "finflow_uid";
+const MIGRATED_KEY = "finflow_migrated";
 
 const DEFAULT_STATE: AppState = {
   budget: 80000,
@@ -42,16 +46,77 @@ function saveState(state: AppState) {
 export function useExpenses() {
   const [state, setState] = useState<AppState>(DEFAULT_STATE);
   const [hydrated, setHydrated] = useState(false);
+  const uidRef = useRef<string | null>(null);
 
+  // Hydrate from localStorage first, then attempt Firebase sync
   useEffect(() => {
-    setState(loadState());
-    setHydrated(true);
+    const init = async () => {
+      // 1. Load from localStorage (always fast, always first)
+      const localState = loadState();
+      const hasLocalData = localState.onboarded && localState.transactions.length > 0;
+
+      // 2. Try to authenticate with Firebase
+      let uid: string | null = null;
+      try {
+        uid = await ensureAnonymousAuth();
+        if (uid) {
+          uidRef.current = uid;
+          localStorage.setItem(UID_KEY, uid);
+        }
+      } catch {
+        // Firebase not configured or offline — that's fine
+      }
+
+      // 3. Migration logic
+      if (hasLocalData && uid) {
+        // User has local data — use it and sync to Firebase
+        setState(localState);
+        setHydrated(true);
+
+        const alreadyMigrated = localStorage.getItem(MIGRATED_KEY);
+        if (!alreadyMigrated) {
+          // First-time migration: push localStorage data to Firestore
+          syncExpensesToFirestore(uid, localState);
+          localStorage.setItem(MIGRATED_KEY, "true");
+        } else {
+          // Already migrated — still sync current state
+          syncExpensesToFirestore(uid, localState);
+        }
+      } else if (!hasLocalData && uid) {
+        // No local data — try recovering from Firestore
+        try {
+          const firestoreState = await loadExpensesFromFirestore(uid);
+          if (firestoreState && firestoreState.onboarded) {
+            setState(firestoreState);
+            saveState(firestoreState); // Restore to localStorage too
+            setHydrated(true);
+            return;
+          }
+        } catch {}
+        // No Firestore data either — fresh start
+        setState(localState);
+        setHydrated(true);
+      } else {
+        // No Firebase at all — just use localStorage
+        setState(localState);
+        setHydrated(true);
+      }
+    };
+
+    init();
   }, []);
 
   const updateState = useCallback((updater: (prev: AppState) => AppState) => {
     setState((prev) => {
       const next = updater(prev);
       saveState(next);
+
+      // Sync to Firestore (debounced inside)
+      const uid = uidRef.current || localStorage.getItem(UID_KEY);
+      if (uid) {
+        syncExpensesToFirestore(uid, next);
+      }
+
       return next;
     });
   }, []);

@@ -1,0 +1,87 @@
+"use client";
+
+import { motion } from "framer-motion";
+import { ArrowRight, Check } from "lucide-react";
+import type { BalanceEntry } from "@/hooks/useTrips";
+import { formatINR } from "@/lib/utils";
+
+interface Props {
+  balances: BalanceEntry[];
+  onSettle?: (from: string, to: string, amount: number) => void;
+  interactive?: boolean;
+}
+
+export default function BalanceChart({ balances, onSettle, interactive = true }: Props) {
+  if (balances.length === 0) {
+    return (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="rounded-2xl border border-white/[0.06] bg-[#15151d] p-6 text-center"
+      >
+        <div className="text-2xl mb-2">🎉</div>
+        <div className="text-sm font-semibold text-[#b8ff57]">All settled up!</div>
+        <div className="text-xs text-[#5a5a6e] mt-1">No pending balances</div>
+      </motion.div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {balances.map((entry, i) => (
+        <motion.div
+          key={`${entry.from.id}-${entry.to.id}-${i}`}
+          initial={{ opacity: 0, x: -12 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.3, delay: i * 0.06 }}
+          className="relative overflow-hidden rounded-xl border border-white/[0.06] bg-[#1a1a24] p-3"
+        >
+          {/* Subtle accent line */}
+          <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-[#ff6b35] to-[#ff6b35]/40" />
+
+          <div className="flex items-center gap-3 ml-1">
+            {/* From */}
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <div className="w-8 h-8 rounded-full bg-[#ff6b35]/15 flex items-center justify-center text-sm flex-shrink-0">
+                {entry.from.avatar}
+              </div>
+              <span className="text-sm font-semibold text-white truncate">
+                {entry.from.name}
+              </span>
+            </div>
+
+            {/* Arrow + Amount */}
+            <div className="flex flex-col items-center flex-shrink-0 px-1">
+              <ArrowRight size={14} className="text-[#5a5a6e]" />
+              <span className="text-[10px] font-bold text-[#ff6b35] mt-0.5">
+                {formatINR(entry.amount)}
+              </span>
+            </div>
+
+            {/* To */}
+            <div className="flex items-center gap-2 min-w-0 flex-1 justify-end">
+              <span className="text-sm font-semibold text-white truncate text-right">
+                {entry.to.name}
+              </span>
+              <div className="w-8 h-8 rounded-full bg-[#2ce88a]/15 flex items-center justify-center text-sm flex-shrink-0">
+                {entry.to.avatar}
+              </div>
+            </div>
+
+            {/* Settle button */}
+            {interactive && onSettle && (
+              <motion.button
+                whileTap={{ scale: 0.85 }}
+                onClick={() => onSettle(entry.from.id, entry.to.id, entry.amount)}
+                className="ml-2 w-8 h-8 rounded-full bg-[#2ce88a]/15 flex items-center justify-center text-[#2ce88a] flex-shrink-0 hover:bg-[#2ce88a]/25 transition-colors"
+                title="Mark as settled"
+              >
+                <Check size={14} strokeWidth={2.5} />
+              </motion.button>
+            )}
+          </div>
+        </motion.div>
+      ))}
+    </div>
+  );
+}

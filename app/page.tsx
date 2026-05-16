@@ -3,6 +3,7 @@
 import { useMemo, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
+import { useAuth } from "@/contexts/AuthContext";
 import { useExpenses } from "@/hooks/useExpenses";
 import { getCategoryById } from "@/lib/categories";
 import { getCurrentMonthPrefix, getDaysInMonth, getPreviousMonthPrefix } from "@/lib/utils";
@@ -20,6 +21,7 @@ import Toast from "@/components/Toast";
 
 export default function HomePage() {
   const router = useRouter();
+  const { user, loading } = useAuth();
   const { state, hydrated, completeOnboarding, addTransaction, deleteTransaction, clearAll, clearCategory, updateBudget } =
     useExpenses();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -32,6 +34,13 @@ export default function HomePage() {
   const previousMonth = getPreviousMonthPrefix();
   const [selectedMonth, setSelectedMonth] = useState(currentMonth);
   const isCurrentMonth = selectedMonth === currentMonth;
+
+  // Auth check - redirect to login if not authenticated
+  useEffect(() => {
+    if (!loading && !user) {
+      router.replace("/login");
+    }
+  }, [user, loading, router]);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -72,7 +81,7 @@ export default function HomePage() {
   const dayCount = isCurrentMonth ? new Date().getDate() : getDaysInMonth(selectedMonth);
   const dailyAvg = dayCount > 0 ? totalSpent / dayCount : 0;
 
-  if (!hydrated) return null;
+  if (!hydrated || loading) return null;
 
   return (
     <>
@@ -186,7 +195,7 @@ export default function HomePage() {
             </motion.div>
           </main>
 
-          <BottomNav disabled={!isCurrentMonth} onAddClick={() => setDrawerOpen(true)} onProfileClick={() => router.push('/profile')} />
+          <BottomNav disabled={!isCurrentMonth} onAddClick={() => setDrawerOpen(true)} />
 
           <AnimatePresence>
             {drawerOpen && (

@@ -20,3 +20,41 @@ export interface AppState {
   onboarded: boolean;
   banks: Bank[];
 }
+
+// ── Trip / Splitwise Types ──────────────────────────────────
+
+export interface TripMember {
+  id: string;
+  name: string;
+  avatar: string; // emoji avatar
+}
+
+export interface TripExpense {
+  id: string;
+  description: string;
+  amount: number;
+  paidBy: string;       // member id
+  splitAmong: string[]; // member ids (equal split)
+  date: string;         // ISO date
+  category?: string;
+}
+
+export interface TripSettlement {
+  id: string;
+  from: string;   // member id who pays
+  to: string;     // member id who receives
+  amount: number;
+  settled: boolean;
+  date: string;
+}
+
+export interface TripSession {
+  id: string;
+  name: string;
+  emoji: string;
+  members: TripMember[];
+  expenses: TripExpense[];
+  settlements: TripSettlement[];
+  createdAt: string;
+  archived: boolean;
+}
