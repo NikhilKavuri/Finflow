@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { CalendarDays, Check, ChevronDown, User } from "lucide-react";
+import { CalendarDays, Check, ChevronDown, LogIn, LogOut, User } from "lucide-react";
 import { formatMonthLabel } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
+import { signOutUser } from "@/lib/firebase";
 
 interface Props {
   currentMonth: string;
@@ -168,6 +169,38 @@ export default function TopNav({
                   <User size={16} />
                   <span className="text-sm font-medium">Profile</span>
                 </motion.button>
+
+                {user?.isAnonymous ? (
+                  <motion.button
+                    type="button"
+                    onClick={() => {
+                      router.push("/login");
+                      setProfileOpen(false);
+                    }}
+                    whileHover={{ x: -2 }}
+                    className="w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-white/[0.04] transition-all duration-200 text-[#8b6fff]"
+                  >
+                    <LogIn size={16} />
+                    <span className="text-sm font-medium">Sign in</span>
+                  </motion.button>
+                ) : (
+                  <motion.button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await signOutUser();
+                        router.push("/login");
+                      } finally {
+                        setProfileOpen(false);
+                      }
+                    }}
+                    whileHover={{ x: -2 }}
+                    className="w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-white/[0.04] transition-all duration-200 text-red-300"
+                  >
+                    <LogOut size={16} />
+                    <span className="text-sm font-medium">Sign out</span>
+                  </motion.button>
+                )}
 
               </motion.div>
             )}

@@ -3,6 +3,11 @@ import { getFirestore } from "firebase/firestore";
 import {
   getAuth,
   signInAnonymously,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signInWithPopup,
+  signOut,
+  GoogleAuthProvider,
   setPersistence,
   browserLocalPersistence,
   onAuthStateChanged,
@@ -55,16 +60,82 @@ function ensureAuthPersistence() {
 export { db, auth, isFirebaseConfigured, onAuthStateChanged };
 export type { User };
 
-export async function ensureAnonymousUser(): Promise<User> {
+async function requireAuth() {
   if (!auth) {
     throw new Error(
       "Firebase is not configured. Add the NEXT_PUBLIC_FIREBASE_* environment variables in Vercel and redeploy.",
     );
   }
-
   await ensureAuthPersistence();
-  if (auth.currentUser) return auth.currentUser;
+  return auth;
+}
 
-  const result = await signInAnonymously(auth);
+export async function ensureAnonymousUser(): Promise<User> {
+  const firebaseAuth = await requireAuth();
+  if (firebaseAuth.currentUser) return firebaseAuth.currentUser;
+
+  const result = await signInAnonymously(firebaseAuth);
   return result.user;
+}
+
+export async function signInWithEmail(email: string, password: string): Promise<User> {
+  const firebaseAuth = await requireAuth();
+  if (firebaseAuth.currentUser?.isAnonymous) {
+    await signOut(firebaseAuth);
+  }
+  const result = await signInWithEmailAndPassword(firebaseAuth, email.trim(), password);
+  return result.user;
+}
+
+export async function signUpWithEmail(email: string, password: string): Promise<User> {
+  const firebaseAuth = await requireAuth();
+  if (firebaseAuth.currentUser?.isAnonymous) {
+    await signOut(firebaseAuth);
+  }
+  const result = await createUserWithEmailAndPassword(firebaseAuth, email.trim(), password);
+  return result.user;
+}
+
+export async function signInWithGoogle(): Promise<User> {
+  const firebaseAuth = await requireAuth();
+  if (firebaseAuth.currentUser?.isAnonymous) {
+    await signOut(firebaseAuth);
+  }
+  const provider = new GoogleAuthProvider();
+  const result = await signInWithPopup(firebaseAuth, provider);
+  return result.user;
+}
+
+export async function signOutUser(): Promise<void> {
+  const firebaseAuth = await requireAuth();
+  await signOut(firebaseAuth);
+}
+
+export function getAuthErrorMessage(error: unknown): string {
+  const code = (error as { code?: string })?.code;
+
+  switch (code) {
+    case "auth/invalid-email":
+      return "Please enter a valid email address.";
+    case "auth/user-disabled":
+      return "This account has been disabled.";
+    case "auth/user-not-found":
+    case "auth/wrong-password":
+    case "auth/invalid-credential":
+      return "Incorrect email or password.";
+    case "auth/email-already-in-use":
+      return "An account with this email already exists. Try signing in.";
+    case "auth/weak-password":
+      return "Password must be at least 6 characters.";
+    case "auth/too-many-requests":
+      return "Too many attempts. Please wait a moment and try again.";
+    case "auth/popup-closed-by-user":
+      return "Sign-in was cancelled.";
+    case "auth/operation-not-allowed":
+      return "This sign-in method is not enabled in Firebase. Enable it in the Firebase Console.";
+    case "auth/network-request-failed":
+      return "Network error. Check your connection and try again.";
+    default:
+      return (error as Error)?.message || "Authentication failed. Please try again.";
+  }
 }

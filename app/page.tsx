@@ -7,6 +7,7 @@ import { useExpenses } from "@/hooks/useExpenses";
 import { getCategoryById } from "@/lib/categories";
 import { getCurrentMonthPrefix, getDaysInMonth, getPreviousMonthPrefix } from "@/lib/utils";
 import Onboarding from "@/components/Onboarding";
+import AppLoading from "@/components/AppLoading";
 import TopNav from "@/components/TopNav";
 import BankFilter from "@/components/BankFilter";
 import BalanceCard from "@/components/BalanceCard";
@@ -19,7 +20,7 @@ import BudgetDrawer from "@/components/BudgetDrawer";
 import Toast from "@/components/Toast";
 
 export default function HomePage() {
-  const { loading } = useAuth();
+  const { authError } = useAuth();
   const { state, hydrated, completeOnboarding, addTransaction, deleteTransaction, clearAll, clearCategory, updateBudget } =
     useExpenses();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -72,16 +73,29 @@ export default function HomePage() {
   const dayCount = isCurrentMonth ? new Date().getDate() : getDaysInMonth(selectedMonth);
   const dailyAvg = dayCount > 0 ? totalSpent / dayCount : 0;
 
-  if (!hydrated || loading) return null;
+  if (!hydrated) {
+    return <AppLoading />;
+  }
 
   return (
     <>
       <AnimatePresence>
-        {!state.onboarded && <Onboarding onComplete={completeOnboarding} />}
+        {!state.onboarded && (
+          <Onboarding key="onboarding" onComplete={completeOnboarding} />
+        )}
       </AnimatePresence>
 
       {state.onboarded && (
-        <div className="app-screen mx-auto flex w-full max-w-[480px] flex-col overflow-x-hidden pb-24">
+        <motion.div className="app-screen mx-auto flex w-full max-w-[480px] flex-col overflow-x-hidden pb-24">
+          {authError && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mx-4 mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200"
+            >
+              Cloud sync unavailable: {authError}
+            </motion.div>
+          )}
           <TopNav
             currentMonth={currentMonth}
             previousMonth={previousMonth}
@@ -217,7 +231,7 @@ export default function HomePage() {
           </AnimatePresence>
 
           <AnimatePresence>{toast && <Toast message={toast} />}</AnimatePresence>
-        </div>
+        </motion.div>
       )}
     </>
   );

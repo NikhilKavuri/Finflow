@@ -7,9 +7,11 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { usePathname } from "next/navigation";
 import {
   auth,
   ensureAnonymousUser,
+  getAuthErrorMessage,
   isFirebaseConfigured,
   onAuthStateChanged,
   type User,
@@ -33,24 +35,12 @@ export function useAuth() {
   return useContext(AuthContext);
 }
 
-function getAuthErrorMessage(error: any) {
-  const code = error?.code;
-
-  if (code === "auth/operation-not-allowed") {
-    return "Anonymous sign-in is not enabled for this Firebase project.";
-  }
-
-  if (code === "auth/network-request-failed") {
-    return "Firebase could not finish anonymous sign-in because the network request failed.";
-  }
-
-  return error?.message || "Anonymous sign-in could not be completed.";
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
+  const isLoginRoute = pathname === "/login";
 
   useEffect(() => {
     if (!auth || !isFirebaseConfigured()) {
@@ -64,6 +54,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let active = true;
     let startingAnonymousUser = false;
 
+    const authTimeout = window.setTimeout(() => {
+      if (active) setLoading(false);
+    }, 8000);
+
     const saveUser = (firebaseUser: User) => {
       setAuthError(null);
       setUser(firebaseUser);
@@ -72,7 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     const startAnonymousSession = async () => {
-      if (startingAnonymousUser) return;
+      if (isLoginRoute || startingAnonymousUser) return;
       startingAnonymousUser = true;
 
       try {
@@ -98,18 +92,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (firebaseUser) {
         saveUser(firebaseUser);
-      } else {
+      } else if (!isLoginRoute) {
         startAnonymousSession();
+      } else {
+        setUser(null);
+        setLoading(false);
       }
     });
 
-    startAnonymousSession();
+    if (!isLoginRoute) {
+      startAnonymousSession();
+    } else if (auth.currentUser) {
+      saveUser(auth.currentUser);
+    } else {
+      setLoading(false);
+    }
 
     return () => {
       active = false;
+      window.clearTimeout(authTimeout);
       unsubscribe();
     };
-  }, []);
+  }, [isLoginRoute]);
 
   return (
     <AuthContext.Provider value={{ user, loading, authError }}>

@@ -49,56 +49,48 @@ export function useExpenses() {
   const [hydrated, setHydrated] = useState(false);
   const uidRef = useRef<string | null>(null);
 
-  // Hydrate from localStorage first, then attempt Firebase sync
+  // Show local data immediately, then sync with Firestore in the background
   useEffect(() => {
-    const init = async () => {
-      // 1. Load from localStorage
-      const localState = loadState();
-      const hasLocalData = localState.onboarded && localState.transactions.length > 0;
+    let cancelled = false;
 
-      // 2. Get uid from localStorage (set by AuthContext when user logs in)
+    const localState = loadState();
+    setState(localState);
+    setHydrated(true);
+
+    const syncRemote = async () => {
       const uid = user?.uid || localStorage.getItem(UID_KEY);
-      if (uid) {
-        uidRef.current = uid;
+      if (!uid || cancelled) return;
+
+      uidRef.current = uid;
+
+      if (localState.onboarded) {
+        const alreadyMigrated = localStorage.getItem(MIGRATED_KEY);
+        syncExpensesToFirestore(uid, localState);
+        if (!alreadyMigrated) {
+          localStorage.setItem(MIGRATED_KEY, "true");
+        }
+        return;
       }
 
-      // 3. Sync logic
-      if (hasLocalData && uid) {
-        // User has local data — use it and sync to Firebase
-        setState(localState);
-        setHydrated(true);
-
-        const alreadyMigrated = localStorage.getItem(MIGRATED_KEY);
-        if (!alreadyMigrated) {
-          // First-time migration: push localStorage data to Firestore
-          syncExpensesToFirestore(uid, localState);
-          localStorage.setItem(MIGRATED_KEY, "true");
-        } else {
-          // Already migrated — still sync current state
-          syncExpensesToFirestore(uid, localState);
+      try {
+        const firestoreState = await Promise.race([
+          loadExpensesFromFirestore(uid),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000)),
+        ]);
+        if (cancelled) return;
+        if (firestoreState?.onboarded) {
+          setState(firestoreState);
+          saveState(firestoreState);
         }
-      } else if (!hasLocalData && uid) {
-        // No local data — try recovering from Firestore
-        try {
-          const firestoreState = await loadExpensesFromFirestore(uid);
-          if (firestoreState && firestoreState.onboarded) {
-            setState(firestoreState);
-            saveState(firestoreState); // Restore to localStorage too
-            setHydrated(true);
-            return;
-          }
-        } catch {}
-        // No Firestore data either — fresh start
-        setState(localState);
-        setHydrated(true);
-      } else {
-        // No uid (user not logged in) or no data — just use localStorage
-        setState(localState);
-        setHydrated(true);
+      } catch {
+        // Keep local state when cloud sync is unavailable
       }
     };
 
-    init();
+    syncRemote();
+    return () => {
+      cancelled = true;
+    };
   }, [user?.uid]);
 
   const updateState = useCallback((updater: (prev: AppState) => AppState) => {
