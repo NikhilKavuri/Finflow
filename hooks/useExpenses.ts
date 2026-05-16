@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { AppState, Transaction, Bank } from "@/lib/types";
 import { getTodayISO } from "@/lib/utils";
-import { ensureAnonymousAuth } from "@/lib/firebase";
 import { syncExpensesToFirestore, loadExpensesFromFirestore } from "@/lib/firestore";
 
 const STORAGE_KEY = "finflow_state";
@@ -51,23 +50,17 @@ export function useExpenses() {
   // Hydrate from localStorage first, then attempt Firebase sync
   useEffect(() => {
     const init = async () => {
-      // 1. Load from localStorage (always fast, always first)
+      // 1. Load from localStorage
       const localState = loadState();
       const hasLocalData = localState.onboarded && localState.transactions.length > 0;
 
-      // 2. Try to authenticate with Firebase
-      let uid: string | null = null;
-      try {
-        uid = await ensureAnonymousAuth();
-        if (uid) {
-          uidRef.current = uid;
-          localStorage.setItem(UID_KEY, uid);
-        }
-      } catch {
-        // Firebase not configured or offline — that's fine
+      // 2. Get uid from localStorage (set by AuthContext when user logs in)
+      const uid = localStorage.getItem(UID_KEY);
+      if (uid) {
+        uidRef.current = uid;
       }
 
-      // 3. Migration logic
+      // 3. Sync logic
       if (hasLocalData && uid) {
         // User has local data — use it and sync to Firebase
         setState(localState);
@@ -97,7 +90,7 @@ export function useExpenses() {
         setState(localState);
         setHydrated(true);
       } else {
-        // No Firebase at all — just use localStorage
+        // No uid (user not logged in) or no data — just use localStorage
         setState(localState);
         setHydrated(true);
       }
