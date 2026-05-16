@@ -22,9 +22,21 @@ export default function LoginPage() {
     try {
       setSigningIn(true);
       setError(null);
-      await signIn();
-    } catch (err) {
-      setError("Failed to sign in. Please try again.");
+      const result = await signIn();
+      if (!result) {
+        setSigningIn(false);
+      }
+    } catch (err: any) {
+      const code = err?.code;
+      if (code === "auth/unauthorized-domain") {
+        setError("This deployed domain is not authorized in Firebase Authentication.");
+      } else if (code === "auth/popup-blocked") {
+        setError("The browser blocked the Google sign-in popup. Please allow popups and try again.");
+      } else if (err?.message) {
+        setError(err.message);
+      } else {
+        setError("Failed to sign in. Please try again.");
+      }
       setSigningIn(false);
     }
   };

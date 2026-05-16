@@ -46,28 +46,37 @@ export type { User };
 const googleProvider = new GoogleAuthProvider();
 
 export async function signInWithGoogle(): Promise<User | null> {
-  if (!auth) return null;
+  if (!auth) {
+    throw new Error(
+      "Firebase is not configured. Add the NEXT_PUBLIC_FIREBASE_* environment variables in Vercel and redeploy."
+    );
+  }
+
   try {
-    // First, check if there's a pending redirect result
-    const redirectResult = await getRedirectResult(auth);
-    if (redirectResult) {
-      return redirectResult.user;
+    const result = await signInWithPopup(auth, googleProvider);
+    return result.user;
+  } catch (error: any) {
+    if (error?.code === "auth/popup-blocked") {
+      await signInWithRedirect(auth, googleProvider);
+      return null;
     }
 
-    // Try popup first (better UX if it works)
-    try {
-      const result = await signInWithPopup(auth, googleProvider);
-      return result.user;
-    } catch (popupError: any) {
-      // If popup is blocked, fall back to redirect
-      if (popupError?.code === "auth/popup-blocked" || popupError?.code === "auth/popup-closed-by-user") {
-        await signInWithRedirect(auth, googleProvider);
-        return null; // User will be redirected, will return after redirect
-      }
-      throw popupError;
+    if (error?.code === "auth/popup-closed-by-user") {
+      return null;
     }
-  } catch (error: any) {
-    console.warn("Google sign-in failed:", error);
+
+    throw error;
+  }
+}
+
+export async function completeGoogleRedirectSignIn(): Promise<User | null> {
+  if (!auth) return null;
+
+  try {
+    const result = await getRedirectResult(auth);
+    return result?.user ?? null;
+  } catch (error) {
+    console.warn("Google redirect sign-in failed:", error);
     return null;
   }
 }

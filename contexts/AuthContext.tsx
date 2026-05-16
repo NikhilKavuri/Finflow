@@ -9,6 +9,7 @@ import {
 } from "react";
 import {
   auth,
+  completeGoogleRedirectSignIn,
   isFirebaseConfigured,
   onAuthStateChanged,
   signInWithGoogle as firebaseSignIn,
@@ -21,14 +22,14 @@ const UID_KEY = "finflow_uid";
 interface AuthContextValue {
   user: User | null;
   loading: boolean;
-  signIn: () => Promise<void>;
+  signIn: () => Promise<User | null>;
   signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue>({
   user: null,
   loading: true,
-  signIn: async () => {},
+  signIn: async () => null,
   signOut: async () => {},
 });
 
@@ -47,6 +48,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    let active = true;
+
+    completeGoogleRedirectSignIn().then((redirectUser) => {
+      if (active && redirectUser) {
+        setUser(redirectUser);
+        localStorage.setItem(UID_KEY, redirectUser.uid);
+      }
+    });
+
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser);
       if (firebaseUser) {
@@ -57,7 +67,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, []);
 
   const signIn = async () => {
@@ -67,6 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (result) {
       localStorage.setItem(UID_KEY, result.uid);
     }
+    return result;
   };
 
   const signOut = async () => {
