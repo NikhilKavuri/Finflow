@@ -7,7 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { user, loading, signIn } = useAuth();
+  const { user, loading, authError, clearAuthError, signIn } = useAuth();
   const [signingIn, setSigningIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -18,10 +18,18 @@ export default function LoginPage() {
     }
   }, [user, loading, router]);
 
+  useEffect(() => {
+    if (authError) {
+      setError(authError);
+      setSigningIn(false);
+    }
+  }, [authError]);
+
   const handleGoogleSignIn = async () => {
     try {
       setSigningIn(true);
       setError(null);
+      clearAuthError();
       const result = await signIn();
       if (!result) {
         setSigningIn(false);

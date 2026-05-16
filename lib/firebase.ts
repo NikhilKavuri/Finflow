@@ -6,14 +6,32 @@ import {
   signInWithRedirect,
   GoogleAuthProvider,
   getRedirectResult,
+  setPersistence,
+  browserLocalPersistence,
   signOut as firebaseSignOut,
   onAuthStateChanged,
   type User,
 } from "firebase/auth";
 
+const firebaseAuthDomain = process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN;
+
+function getAuthDomain() {
+  if (typeof window === "undefined") {
+    return firebaseAuthDomain;
+  }
+
+  const { host, hostname } = window.location;
+  const isLocalhost =
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "0.0.0.0";
+
+  return isLocalhost ? firebaseAuthDomain : host;
+}
+
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  authDomain: getAuthDomain(),
   projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
   storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
@@ -25,6 +43,7 @@ const isFirebaseConfigured = () => {
   return (
     firebaseConfig.apiKey &&
     firebaseConfig.apiKey !== "YOUR_API_KEY_HERE" &&
+    firebaseConfig.authDomain &&
     firebaseConfig.projectId &&
     firebaseConfig.projectId !== "YOUR_PROJECT_ID_HERE"
   );
@@ -38,6 +57,20 @@ const app = isFirebaseConfigured()
   : null;
 const db = app ? getFirestore(app) : null;
 const auth = app ? getAuth(app) : null;
+let persistencePromise: Promise<void> | null = null;
+
+function ensureAuthPersistence() {
+  if (!auth) return Promise.resolve();
+
+  if (!persistencePromise) {
+    persistencePromise = setPersistence(auth, browserLocalPersistence).catch((error) => {
+      persistencePromise = null;
+      throw error;
+    });
+  }
+
+  return persistencePromise;
+}
 
 export { db, auth, isFirebaseConfigured, onAuthStateChanged };
 export type { User };
@@ -45,29 +78,6 @@ export type { User };
 // Google Sign-In with fallback to redirect
 const googleProvider = new GoogleAuthProvider();
 
-// export async function signInWithGoogle(): Promise<User | null> {
-//   if (!auth) {
-//     throw new Error(
-//       "Firebase is not configured. Add the NEXT_PUBLIC_FIREBASE_* environment variables in Vercel and redeploy."
-//     );
-//   }
-
-//   try {
-//     const result = await signInWithPopup(auth, googleProvider);
-//     return result.user;
-//   } catch (error: any) {
-//     if (error?.code === "auth/popup-blocked") {
-//       await signInWithRedirect(auth, googleProvider);
-//       return null;
-//     }
-
-//     if (error?.code === "auth/popup-closed-by-user") {
-//       return null;
-//     }
-
-//     throw error;
-//   }
-// }
 export async function signInWithGoogle(): Promise<User | null> {
   if (!auth) {
     throw new Error(
@@ -82,6 +92,8 @@ export async function signInWithGoogle(): Promise<User | null> {
       window.location.hostname === "127.0.0.1");
 
   try {
+    await ensureAuthPersistence();
+
     if (isLocalhost) {
       const result = await signInWithPopup(auth, googleProvider);
       return result.user;
@@ -94,6 +106,7 @@ export async function signInWithGoogle(): Promise<User | null> {
       error?.code === "auth/popup-blocked" ||
       error?.code === "auth/cancelled-popup-request"
     ) {
+      await ensureAuthPersistence();
       await signInWithRedirect(auth, googleProvider);
       return null;
     }
@@ -107,13 +120,9 @@ export async function signInWithGoogle(): Promise<User | null> {
 export async function completeGoogleRedirectSignIn(): Promise<User | null> {
   if (!auth) return null;
 
-  try {
-    const result = await getRedirectResult(auth);
-    return result?.user ?? null;
-  } catch (error) {
-    console.warn("Google redirect sign-in failed:", error);
-    return null;
-  }
+  await ensureAuthPersistence();
+  const result = await getRedirectResult(auth);
+  return result?.user ?? null;
 }
 
 export async function signOut(): Promise<void> {
