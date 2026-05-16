@@ -3,7 +3,9 @@ import { getFirestore } from "firebase/firestore";
 import {
   getAuth,
   signInWithPopup,
+  signInWithRedirect,
   GoogleAuthProvider,
+  getRedirectResult,
   signOut as firebaseSignOut,
   onAuthStateChanged,
   type User,
@@ -40,17 +42,31 @@ const auth = app ? getAuth(app) : null;
 export { db, auth, isFirebaseConfigured, onAuthStateChanged };
 export type { User };
 
-// Google Sign-In
+// Google Sign-In with fallback to redirect
 const googleProvider = new GoogleAuthProvider();
 
 export async function signInWithGoogle(): Promise<User | null> {
   if (!auth) return null;
   try {
-    const result = await signInWithPopup(auth, googleProvider);
-    return result.user;
+    // First, check if there's a pending redirect result
+    const redirectResult = await getRedirectResult(auth);
+    if (redirectResult) {
+      return redirectResult.user;
+    }
+
+    // Try popup first (better UX if it works)
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      return result.user;
+    } catch (popupError: any) {
+      // If popup is blocked, fall back to redirect
+      if (popupError?.code === "auth/popup-blocked" || popupError?.code === "auth/popup-closed-by-user") {
+        await signInWithRedirect(auth, googleProvider);
+        return null; // User will be redirected, will return after redirect
+      }
+      throw popupError;
+    }
   } catch (error: any) {
-    // User closed popup or error
-    if (error?.code === "auth/popup-closed-by-user") return null;
     console.warn("Google sign-in failed:", error);
     return null;
   }
