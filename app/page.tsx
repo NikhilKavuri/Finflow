@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { useAuth } from "@/contexts/AuthContext";
 import { useExpenses } from "@/hooks/useExpenses";
@@ -20,8 +19,7 @@ import BudgetDrawer from "@/components/BudgetDrawer";
 import Toast from "@/components/Toast";
 
 export default function HomePage() {
-  const router = useRouter();
-  const { user, loading } = useAuth();
+  const { loading } = useAuth();
   const { state, hydrated, completeOnboarding, addTransaction, deleteTransaction, clearAll, clearCategory, updateBudget } =
     useExpenses();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -34,13 +32,6 @@ export default function HomePage() {
   const previousMonth = getPreviousMonthPrefix();
   const [selectedMonth, setSelectedMonth] = useState(currentMonth);
   const isCurrentMonth = selectedMonth === currentMonth;
-
-  // Auth check - redirect to login if not authenticated
-  useEffect(() => {
-    if (!loading && !user) {
-      router.replace("/login");
-    }
-  }, [user, loading, router]);
 
   const showToast = (msg: string) => {
     setToast(msg);

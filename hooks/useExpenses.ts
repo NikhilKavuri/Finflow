@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import type { AppState, Transaction, Bank } from "@/lib/types";
 import { getTodayISO } from "@/lib/utils";
 import { syncExpensesToFirestore, loadExpensesFromFirestore } from "@/lib/firestore";
@@ -43,6 +44,7 @@ function saveState(state: AppState) {
 }
 
 export function useExpenses() {
+  const { user } = useAuth();
   const [state, setState] = useState<AppState>(DEFAULT_STATE);
   const [hydrated, setHydrated] = useState(false);
   const uidRef = useRef<string | null>(null);
@@ -55,7 +57,7 @@ export function useExpenses() {
       const hasLocalData = localState.onboarded && localState.transactions.length > 0;
 
       // 2. Get uid from localStorage (set by AuthContext when user logs in)
-      const uid = localStorage.getItem(UID_KEY);
+      const uid = user?.uid || localStorage.getItem(UID_KEY);
       if (uid) {
         uidRef.current = uid;
       }
@@ -97,7 +99,7 @@ export function useExpenses() {
     };
 
     init();
-  }, []);
+  }, [user?.uid]);
 
   const updateState = useCallback((updater: (prev: AppState) => AppState) => {
     setState((prev) => {

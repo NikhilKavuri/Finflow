@@ -3,17 +3,15 @@
 import {
   createContext,
   useContext,
-  useState,
   useEffect,
+  useState,
   type ReactNode,
 } from "react";
 import {
   auth,
-  completeGoogleRedirectSignIn,
+  ensureAnonymousUser,
   isFirebaseConfigured,
   onAuthStateChanged,
-  signInWithGoogle as firebaseSignIn,
-  signOut as firebaseSignOut,
   type User,
 } from "@/lib/firebase";
 
@@ -23,18 +21,12 @@ interface AuthContextValue {
   user: User | null;
   loading: boolean;
   authError: string | null;
-  clearAuthError: () => void;
-  signIn: () => Promise<User | null>;
-  signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue>({
   user: null,
   loading: true,
   authError: null,
-  clearAuthError: () => {},
-  signIn: async () => null,
-  signOut: async () => {},
 });
 
 export function useAuth() {
@@ -44,19 +36,15 @@ export function useAuth() {
 function getAuthErrorMessage(error: any) {
   const code = error?.code;
 
-  if (code === "auth/unauthorized-domain") {
-    return "This deployed domain is not authorized in Firebase Authentication.";
-  }
-
   if (code === "auth/operation-not-allowed") {
-    return "Google sign-in is not enabled for this Firebase project.";
+    return "Anonymous sign-in is not enabled for this Firebase project.";
   }
 
   if (code === "auth/network-request-failed") {
-    return "Firebase could not finish sign-in because the network request failed.";
+    return "Firebase could not finish anonymous sign-in because the network request failed.";
   }
 
-  return error?.message || "Google sign-in could not be completed. Please try again.";
+  return error?.message || "Anonymous sign-in could not be completed.";
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -64,7 +52,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
 
-  // Listen to Firebase auth state changes
   useEffect(() => {
     if (!auth || !isFirebaseConfigured()) {
       setAuthError(
@@ -75,33 +62,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     let active = true;
+    let startingAnonymousUser = false;
 
-    completeGoogleRedirectSignIn()
-      .then((redirectUser) => {
-        if (active && redirectUser) {
-          setAuthError(null);
-          setUser(redirectUser);
-          localStorage.setItem(UID_KEY, redirectUser.uid);
-        }
-      })
-      .catch((error) => {
-        console.warn("Google redirect sign-in failed:", error);
+    const saveUser = (firebaseUser: User) => {
+      setAuthError(null);
+      setUser(firebaseUser);
+      localStorage.setItem(UID_KEY, firebaseUser.uid);
+      setLoading(false);
+    };
+
+    const startAnonymousSession = async () => {
+      if (startingAnonymousUser) return;
+      startingAnonymousUser = true;
+
+      try {
+        const anonymousUser = await ensureAnonymousUser();
         if (active) {
+          saveUser(anonymousUser);
+        }
+      } catch (error) {
+        console.warn("Anonymous sign-in failed:", error);
+        if (active) {
+          localStorage.removeItem(UID_KEY);
+          setUser(null);
           setAuthError(getAuthErrorMessage(error));
           setLoading(false);
         }
-      });
+      } finally {
+        startingAnonymousUser = false;
+      }
+    };
 
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      setUser(firebaseUser);
+      if (!active) return;
+
       if (firebaseUser) {
-        setAuthError(null);
-        localStorage.setItem(UID_KEY, firebaseUser.uid);
+        saveUser(firebaseUser);
       } else {
-        localStorage.removeItem(UID_KEY);
+        startAnonymousSession();
       }
-      setLoading(false);
     });
+
+    startAnonymousSession();
 
     return () => {
       active = false;
@@ -109,35 +111,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const signIn = async () => {
-    setAuthError(null);
-    const result = await firebaseSignIn();
-    // If sign-in successful and there's existing localStorage data,
-    // it will be auto-synced on next useExpenses hydration
-    if (result) {
-      localStorage.setItem(UID_KEY, result.uid);
-    }
-    return result;
-  };
-
-  const signOut = async () => {
-    setAuthError(null);
-    await firebaseSignOut();
-    localStorage.removeItem(UID_KEY);
-    // Don't clear localStorage expense data — keep it for offline access
-  };
-
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        loading,
-        authError,
-        clearAuthError: () => setAuthError(null),
-        signIn,
-        signOut,
-      }}
-    >
+    <AuthContext.Provider value={{ user, loading, authError }}>
       {children}
     </AuthContext.Provider>
   );

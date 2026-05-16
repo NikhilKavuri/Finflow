@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import type { TripSession, TripExpense, TripMember, TripSettlement } from "@/lib/types";
 import { getTodayISO } from "@/lib/utils";
 import { syncTripsToFirestore, loadTripsFromFirestore } from "@/lib/firestore";
@@ -127,6 +128,7 @@ export function getMemberSpending(trip: TripSession): Record<string, number> {
 // ── Hook ────────────────────────────────────────────────────
 
 export function useTrips() {
+  const { user } = useAuth();
   const [trips, setTrips] = useState<TripSession[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const uidRef = useRef<string | null>(null);
@@ -134,7 +136,7 @@ export function useTrips() {
   useEffect(() => {
     const init = async () => {
       const localTrips = loadTrips();
-      const uid = localStorage.getItem(UID_KEY);
+      const uid = user?.uid || localStorage.getItem(UID_KEY);
       uidRef.current = uid;
 
       if (localTrips.length > 0) {
@@ -159,7 +161,7 @@ export function useTrips() {
       }
     };
     init();
-  }, []);
+  }, [user?.uid]);
 
   const updateTrips = useCallback((updater: (prev: TripSession[]) => TripSession[]) => {
     setTrips((prev) => {

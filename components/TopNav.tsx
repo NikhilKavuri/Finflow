@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { CalendarDays, Check, ChevronDown, User, LogOut } from "lucide-react";
+import { CalendarDays, Check, ChevronDown, User } from "lucide-react";
 import { formatMonthLabel } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
@@ -25,7 +25,7 @@ export default function TopNav({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
-  const { user, signOut } = useAuth();
+  const { user } = useAuth();
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -42,12 +42,6 @@ export default function TopNav({
       return () => document.removeEventListener("mousedown", handleClickOutside);
     }
   }, [monthOpen, profileOpen]);
-
-  const handleLogout = async () => {
-    await signOut();
-    setProfileOpen(false);
-    router.push("/login");
-  };
 
   const months = [
     { value: currentMonth, label: formatMonthLabel(currentMonth), hint: "Editable" },
@@ -156,8 +150,10 @@ export default function TopNav({
                 className="absolute right-0 top-12 z-50 w-48 overflow-hidden rounded-2xl border border-white/[0.08] bg-[#141419]/95 shadow-[0_16px_48px_rgba(0,0,0,0.5)] backdrop-blur-xl"
               >
                 <div className="p-3 border-b border-white/[0.08]">
-                  <p className="text-xs text-[#5a5a6e] font-semibold">Signed in as</p>
-                  <p className="text-sm font-semibold text-white truncate mt-1">{user?.email || user?.displayName || "User"}</p>
+                  <p className="text-xs text-[#5a5a6e] font-semibold">Private profile</p>
+                  <p className="text-sm font-semibold text-white truncate mt-1">
+                    {user?.isAnonymous ? "This browser" : user?.email || user?.displayName || "User"}
+                  </p>
                 </div>
                 
                 <motion.button
@@ -173,15 +169,6 @@ export default function TopNav({
                   <span className="text-sm font-medium">Profile</span>
                 </motion.button>
 
-                <motion.button
-                  type="button"
-                  onClick={handleLogout}
-                  whileHover={{ x: -2 }}
-                  className="w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-red-500/10 transition-all duration-200 text-red-400 border-t border-white/[0.08]"
-                >
-                  <LogOut size={16} />
-                  <span className="text-sm font-medium">Sign out</span>
-                </motion.button>
               </motion.div>
             )}
           </AnimatePresence>
