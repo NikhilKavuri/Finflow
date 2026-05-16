@@ -45,26 +45,61 @@ export type { User };
 // Google Sign-In with fallback to redirect
 const googleProvider = new GoogleAuthProvider();
 
+// export async function signInWithGoogle(): Promise<User | null> {
+//   if (!auth) {
+//     throw new Error(
+//       "Firebase is not configured. Add the NEXT_PUBLIC_FIREBASE_* environment variables in Vercel and redeploy."
+//     );
+//   }
+
+//   try {
+//     const result = await signInWithPopup(auth, googleProvider);
+//     return result.user;
+//   } catch (error: any) {
+//     if (error?.code === "auth/popup-blocked") {
+//       await signInWithRedirect(auth, googleProvider);
+//       return null;
+//     }
+
+//     if (error?.code === "auth/popup-closed-by-user") {
+//       return null;
+//     }
+
+//     throw error;
+//   }
+// }
 export async function signInWithGoogle(): Promise<User | null> {
   if (!auth) {
     throw new Error(
-      "Firebase is not configured. Add the NEXT_PUBLIC_FIREBASE_* environment variables in Vercel and redeploy."
+      "Firebase is not configured. Add the NEXT_PUBLIC_FIREBASE_* environment variables in Vercel and redeploy.",
     );
   }
 
+  // On non-localhost, redirect is more reliable than popup
+  const isLocalhost =
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1");
+
   try {
-    const result = await signInWithPopup(auth, googleProvider);
-    return result.user;
+    if (isLocalhost) {
+      const result = await signInWithPopup(auth, googleProvider);
+      return result.user;
+    } else {
+      await signInWithRedirect(auth, googleProvider);
+      return null; // will complete via completeGoogleRedirectSignIn
+    }
   } catch (error: any) {
-    if (error?.code === "auth/popup-blocked") {
+    if (
+      error?.code === "auth/popup-blocked" ||
+      error?.code === "auth/cancelled-popup-request"
+    ) {
       await signInWithRedirect(auth, googleProvider);
       return null;
     }
-
     if (error?.code === "auth/popup-closed-by-user") {
       return null;
     }
-
     throw error;
   }
 }
