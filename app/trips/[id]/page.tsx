@@ -15,8 +15,8 @@ import {
 import { useTrips, calculateBalances, getTripTotal, getMemberSpending } from "@/hooks/useTrips";
 import { formatINR, formatDate } from "@/lib/utils";
 import BottomNav from "@/components/BottomNav";
-import BalanceChart from "@/components/BalanceChart";
-import TripExpenseDrawer from "@/components/TripExpenseDrawer";
+import BalanceChart from "@/components/trips/BalanceChart";
+import TripExpenseDrawer from "@/components/trips/TripExpenseDrawer";
 import Toast from "@/components/Toast";
 
 export default function TripDetailPage() {

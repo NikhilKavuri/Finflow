@@ -6,17 +6,17 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useExpenses } from "@/hooks/useExpenses";
 import { getCategoryById } from "@/lib/categories";
 import { getCurrentMonthPrefix, getDaysInMonth, getPreviousMonthPrefix } from "@/lib/utils";
-import Onboarding from "@/components/Onboarding";
+import Onboarding from "@/components/home/Onboarding";
 import AppLoading from "@/components/AppLoading";
-import TopNav from "@/components/TopNav";
-import BankFilter from "@/components/BankFilter";
-import BalanceCard from "@/components/BalanceCard";
-import QuickStats from "@/components/QuickStats";
-import CategoryBreakdown from "@/components/CategoryBreakdown";
-import SpendFeed from "@/components/SpendFeed";
+import TopNav from "@/components/home/TopNav";
+import BankFilter from "@/components/home/BankFilter";
+import BalanceCard from "@/components/home/BalanceCard";
+import QuickStats from "@/components/home/QuickStats";
+import CategoryBreakdown from "@/components/home/CategoryBreakdown";
+import SpendFeed from "@/components/home/SpendFeed";
 import BottomNav from "@/components/BottomNav";
-import ExpenseDrawer from "@/components/ExpenseDrawer";
-import BudgetDrawer from "@/components/BudgetDrawer";
+import ExpenseDrawer from "@/components/home/ExpenseDrawer";
+import BudgetDrawer from "@/components/home/BudgetDrawer";
 import Toast from "@/components/Toast";
 
 export default function HomePage() {

@@ -6,8 +6,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Plane, Search } from "lucide-react";
 import { useTrips } from "@/hooks/useTrips";
 import BottomNav from "@/components/BottomNav";
-import TripCard from "@/components/TripCard";
-import CreateTripDrawer from "@/components/CreateTripDrawer";
+import TripCard from "@/components/trips/TripCard";
+import CreateTripDrawer from "@/components/trips/CreateTripDrawer";
 import Toast from "@/components/Toast";
 
 export default function TripsPage() {
