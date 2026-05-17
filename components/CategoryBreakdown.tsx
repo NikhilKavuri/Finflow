@@ -122,7 +122,7 @@ export default function CategoryBreakdown({ expenses, selectedCategoryId, onCate
                       </span>
                       <span className="text-[10px] px-1.5 py-0.5 rounded-md font-bold text-white/80" 
                             style={{ backgroundColor: activeItem.cat.color + "40" }}>
-                        {Math.round(activeItem.pct * 100)}%
+                        {Math.round((activeItem.amount / totalAmount) * 100)}%
                       </span>
                     </div>
                   </div>
