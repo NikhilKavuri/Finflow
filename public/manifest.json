@@ -1,12 +1,15 @@
 {
-  "name": "FinFlow – AI Expense Tracker",
+  "name": "FinFlow - Expense Tracker",
   "short_name": "FinFlow",
-  "description": "Premium AI expense tracker for Hyderabad developers",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0a0a0f",
   "theme_color": "#0a0a0f",
   "icons": [
-    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
   ]
 }
