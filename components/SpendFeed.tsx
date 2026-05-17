@@ -73,7 +73,7 @@ export default function SpendFeed({
       {filteredTransactions.length === 0 ? (
         <div className="text-center py-8">
           <div className="text-4xl mb-3">🧾</div>
-          <p className="font-syne text-sm font-bold text-white">No transactions</p>
+          <p className="font-syne text-sm font-bold text-white">No expenses</p>
           <p className="text-xs text-[#5a5a6e] mt-1">
             {query ? "No matching expenses found" : "Tap + to log your first expense"}
           </p>

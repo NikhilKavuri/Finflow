@@ -192,12 +192,12 @@ export default function HomePage() {
                       onDelete={(id) => {
                         if (!isCurrentMonth) return;
                         deleteTransaction(id);
-                        showToast("Transaction removed");
+                        showToast("Expense removed");
                       }}
                       onClearAll={() => {
                         if (!isCurrentMonth || !selectedCategoryId) return;
                         clearCategory(selectedCategoryId, currentMonth);
-                        showToast("Category transactions cleared");
+                        showToast("Category expenses cleared");
                       }}
                     />
                   </motion.div>
@@ -258,11 +258,11 @@ export default function HomePage() {
                 onClose={() => setViewExpensesOpen(false)}
                 onDelete={(id) => {
                   deleteTransaction(id);
-                  showToast("Transaction removed");
+                  showToast("Expense removed");
                 }}
                 onClearAll={() => {
                   clearAll(selectedMonth);
-                  showToast("All transactions cleared");
+                  showToast("All expenses cleared");
                 }}
               />
             )}

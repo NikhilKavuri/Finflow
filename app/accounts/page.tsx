@@ -8,13 +8,17 @@ import { useAuth } from "@/contexts/AuthContext";
 import { formatINR, getCurrentMonthPrefix } from "@/lib/utils";
 import BottomNav from "@/components/BottomNav";
 import PageLoader from "@/components/PageLoader";
+import ViewExpensesDrawer from "@/components/ViewExpensesDrawer";
+import Toast from "@/components/Toast";
 import type { Bank } from "@/lib/types";
 
 export default function AccountsPage() {
   const { user, loading: authLoading } = useAuth();
-  const { state, hydrated, addBank, updateBank, deleteBank } = useExpenses();
+  const { state, hydrated, addBank, updateBank, deleteBank, deleteTransaction, clearAll } = useExpenses();
   const [isAdding, setIsAdding] = useState(false);
   const [editingBank, setEditingBank] = useState<Bank | null>(null);
+  const [viewBankExpenses, setViewBankExpenses] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
   const [bankName, setBankName] = useState("");
   const [bankBalance, setBankBalance] = useState("");
 
@@ -90,6 +94,11 @@ export default function AccountsPage() {
     setIsAdding(false);
     setBankName("");
     setBankBalance("");
+  };
+
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2600);
   };
 
   if (authLoading || !hydrated) {
@@ -218,7 +227,8 @@ export default function AccountsPage() {
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.4, delay: i * 0.08 }}
-                className="rounded-2xl border border-white/[0.06] bg-[#1a1a24] p-4 relative overflow-hidden"
+                onClick={() => setViewBankExpenses(bank.id)}
+                className="rounded-2xl border border-white/[0.06] bg-[#1a1a24] hover:bg-[#252533] p-4 relative overflow-hidden cursor-pointer transition-colors"
               >
                 {/* Top accent line */}
                 <div
@@ -261,12 +271,12 @@ export default function AccountsPage() {
                       <div className="flex items-center gap-3 mt-2 text-[10px] text-[#5a5a6e]">
                         {stats.txCount > 0 && (
                           <>
-                            <span>{stats.txCount} transactions</span>
+                            <span>{stats.txCount} expenses</span>
                             {stats.expenses > 0 && <span className="text-[#ff4f6b]">-{formatINR(stats.expenses)}</span>}
                             {stats.income > 0 && <span className="text-[#2ce88a]">+{formatINR(stats.income)}</span>}
                           </>
                         )}
-                        {stats.txCount === 0 && <span>No transactions this month</span>}
+                        {stats.txCount === 0 && <span>No expenses this month</span>}
                       </div>
                     </div>
                   </div>
@@ -275,7 +285,7 @@ export default function AccountsPage() {
                   <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
                     <motion.button
                       whileTap={{ scale: 0.9 }}
-                      onClick={() => handleEditBank(bank)}
+                      onClick={(e) => { e.stopPropagation(); handleEditBank(bank); }}
                       className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-[#9898aa] hover:text-white transition-colors"
                     >
                       <Edit2 size={13} />
@@ -283,7 +293,7 @@ export default function AccountsPage() {
                     {state.banks.length > 1 && (
                       <motion.button
                         whileTap={{ scale: 0.9 }}
-                        onClick={() => handleDeleteBank(bank.id)}
+                        onClick={(e) => { e.stopPropagation(); handleDeleteBank(bank.id); }}
                         className="w-8 h-8 rounded-full bg-red-500/10 flex items-center justify-center text-red-400 hover:text-red-300 transition-colors"
                       >
                         <Trash2 size={13} />
@@ -306,6 +316,28 @@ export default function AccountsPage() {
       </main>
 
       <BottomNav onAddClick={() => setIsAdding(true)} />
+
+      <AnimatePresence>
+        {viewBankExpenses && (
+          <ViewExpensesDrawer
+            transactions={state.transactions.filter((t) => t.bankId === viewBankExpenses && t.date.startsWith(currentMonth))}
+            banks={state.banks}
+            editable={true}
+            onClose={() => setViewBankExpenses(null)}
+            onDelete={(id) => {
+              deleteTransaction(id);
+              showToast("Expense removed");
+            }}
+            onClearAll={() => {
+              // Clearing a bank's transactions would need custom logic, but for simplicity we don't allow clear all on the bank view
+              // Actually, clearAll clears by month prefix, so we can just hide the clear all button if filtered by bank
+              showToast("Cannot clear all from this view");
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>{toast && <Toast message={toast} />}</AnimatePresence>
     </div>
   );
 }
