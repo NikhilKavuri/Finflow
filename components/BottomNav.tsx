@@ -1,9 +1,10 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Plus, Home, Plane } from "lucide-react";
+import { Plus, Home, Plane, Wallet, User } from "lucide-react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface Props {
   disabled?: boolean;
@@ -12,42 +13,27 @@ interface Props {
 
 export default function BottomNav({ disabled = false, onAddClick }: Props) {
   const pathname = usePathname();
+  const { user } = useAuth();
   const isHome = pathname === "/";
+  const isAccounts = pathname === "/accounts";
   const isTrips = pathname?.startsWith("/trips");
+  const isProfile = pathname === "/profile";
+
+  const tabs = [
+    { href: "/", label: "Home", icon: Home, active: isHome },
+    { href: "/accounts", label: "Accounts", icon: Wallet, active: isAccounts },
+    { href: "/trips", label: "Trips", icon: Plane, active: isTrips },
+    { href: "/profile", label: "Profile", icon: User, active: isProfile, isProfileTab: true },
+  ];
 
   return (
     <nav className="mobile-footer fixed bottom-0 left-0 right-0 z-30 mx-auto w-full max-w-[480px] glass-footer border-t border-white/[0.06]">
-      <div className="relative flex items-center justify-around h-14 px-4">
-        {/* Home Tab */}
-        <Link href="/" className="flex-1 flex justify-center">
-          <motion.div
-            className="flex flex-col items-center gap-0.5 py-1.5 px-3 rounded-xl transition-colors"
-            whileTap={{ scale: 0.9 }}
-          >
-            <div className="relative">
-              <Home
-                size={20}
-                strokeWidth={isHome ? 2.4 : 1.8}
-                className={isHome ? "text-[#8b6fff]" : "text-[#5a5a6e]"}
-              />
-              {isHome && (
-                <motion.div
-                  layoutId="nav-glow"
-                  className="absolute -inset-2 rounded-full bg-[#6c47ff]/15 -z-10"
-                  initial={false}
-                  transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                />
-              )}
-            </div>
-            <span
-              className={`text-[10px] font-semibold ${
-                isHome ? "text-[#8b6fff]" : "text-[#5a5a6e]"
-              }`}
-            >
-              Home
-            </span>
-          </motion.div>
-        </Link>
+      <div className="relative flex items-center justify-around h-14 px-2">
+        {/* Home */}
+        <NavTab tab={tabs[0]} />
+
+        {/* Accounts */}
+        <NavTab tab={tabs[1]} />
 
         {/* Center Add Button */}
         <div className="flex justify-center" style={{ flex: "0 0 auto" }}>
@@ -62,7 +48,7 @@ export default function BottomNav({ disabled = false, onAddClick }: Props) {
             whileHover={disabled ? undefined : { scale: 1.08 }}
             onClick={onAddClick}
             disabled={disabled}
-            aria-label={isTrips ? "Add trip" : "Add expense"}
+            aria-label="Add"
           >
             {!disabled && (
               <motion.div
@@ -87,37 +73,64 @@ export default function BottomNav({ disabled = false, onAddClick }: Props) {
           </motion.button>
         </div>
 
-        {/* Trips Tab */}
-        <Link href="/trips" className="flex-1 flex justify-center">
-          <motion.div
-            className="flex flex-col items-center gap-0.5 py-1.5 px-3 rounded-xl transition-colors"
-            whileTap={{ scale: 0.9 }}
-          >
-            <div className="relative">
-              <Plane
-                size={20}
-                strokeWidth={isTrips ? 2.4 : 1.8}
-                className={isTrips ? "text-[#8b6fff]" : "text-[#5a5a6e]"}
-              />
-              {isTrips && (
-                <motion.div
-                  layoutId="nav-glow"
-                  className="absolute -inset-2 rounded-full bg-[#6c47ff]/15 -z-10"
-                  initial={false}
-                  transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                />
-              )}
-            </div>
-            <span
-              className={`text-[10px] font-semibold ${
-                isTrips ? "text-[#8b6fff]" : "text-[#5a5a6e]"
-              }`}
-            >
-              Trips
-            </span>
-          </motion.div>
-        </Link>
+        {/* Trips */}
+        <NavTab tab={tabs[2]} />
+
+        {/* Profile */}
+        <NavTab tab={tabs[3]} user={user} />
       </div>
     </nav>
+  );
+}
+
+function NavTab({
+  tab,
+  user,
+}: {
+  tab: { href: string; label: string; icon: any; active: boolean | undefined; isProfileTab?: boolean };
+  user?: any;
+}) {
+  const Icon = tab.icon;
+
+  return (
+    <Link href={tab.href} className="flex-1 flex justify-center">
+      <motion.div
+        className="flex flex-col items-center gap-0.5 py-1.5 px-3 rounded-xl transition-colors"
+        whileTap={{ scale: 0.9 }}
+      >
+        <div className="relative">
+          {tab.isProfileTab && user?.photoURL ? (
+            <div className="relative">
+              <img
+                src={user.photoURL}
+                alt="Profile"
+                className={`w-5 h-5 rounded-full object-cover ${tab.active ? "ring-1 ring-[#8b6fff]" : ""}`}
+              />
+            </div>
+          ) : (
+            <Icon
+              size={20}
+              strokeWidth={tab.active ? 2.4 : 1.8}
+              className={tab.active ? "text-[#8b6fff]" : "text-[#5a5a6e]"}
+            />
+          )}
+          {tab.active && (
+            <motion.div
+              layoutId="nav-glow"
+              className="absolute -inset-2 rounded-full bg-[#6c47ff]/15 -z-10"
+              initial={false}
+              transition={{ type: "spring", stiffness: 400, damping: 30 }}
+            />
+          )}
+        </div>
+        <span
+          className={`text-[10px] font-semibold ${
+            tab.active ? "text-[#8b6fff]" : "text-[#5a5a6e]"
+          }`}
+        >
+          {tab.label}
+        </span>
+      </motion.div>
+    </Link>
   );
 }

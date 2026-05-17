@@ -14,7 +14,7 @@ const DEFAULT_STATE: AppState = {
   budget: 80000,
   transactions: [],
   onboarded: false,
-  banks: [{ id: "default", name: "Default Bank" }],
+  banks: [{ id: "default", name: "Default Bank", balance: 0, initialBalance: 0 }],
 };
 
 function loadState(): AppState {
@@ -30,7 +30,13 @@ function loadState(): AppState {
             .filter((tx: Transaction) => !/^s\d+$/.test(tx.id))
             .map((tx: any) => ({ ...tx, bankId: tx.bankId || "default" }))
         : [],
-      banks: Array.isArray(parsed.banks) ? parsed.banks : DEFAULT_STATE.banks,
+      banks: Array.isArray(parsed.banks)
+        ? parsed.banks.map((b: any) => ({
+            ...b,
+            balance: b.balance ?? 0,
+            initialBalance: b.initialBalance ?? b.balance ?? 0,
+          }))
+        : DEFAULT_STATE.banks,
     };
   } catch {
     return DEFAULT_STATE;
@@ -136,10 +142,25 @@ export function useExpenses() {
         date: tx.date || getTodayISO(),
         bankId: tx.bankId || "default",
       };
-      updateState((prev) => ({
-        ...prev,
-        transactions: [newTx, ...prev.transactions],
-      }));
+      updateState((prev) => {
+        // Update bank balance
+        const updatedBanks = prev.banks.map((bank) => {
+          if (bank.id === newTx.bankId) {
+            const currentBalance = bank.balance ?? 0;
+            const newBalance = newTx.type === "expense"
+              ? currentBalance - newTx.amount
+              : currentBalance + newTx.amount;
+            return { ...bank, balance: newBalance };
+          }
+          return bank;
+        });
+
+        return {
+          ...prev,
+          transactions: [newTx, ...prev.transactions],
+          banks: updatedBanks,
+        };
+      });
       return newTx;
     },
     [updateState]
@@ -147,31 +168,95 @@ export function useExpenses() {
 
   const deleteTransaction = useCallback(
     (id: string) => {
-      updateState((prev) => ({
-        ...prev,
-        transactions: prev.transactions.filter((t) => t.id !== id),
-      }));
+      updateState((prev) => {
+        const tx = prev.transactions.find((t) => t.id === id);
+        let updatedBanks = prev.banks;
+
+        // Reverse the balance change
+        if (tx) {
+          updatedBanks = prev.banks.map((bank) => {
+            if (bank.id === tx.bankId) {
+              const currentBalance = bank.balance ?? 0;
+              const newBalance = tx.type === "expense"
+                ? currentBalance + tx.amount
+                : currentBalance - tx.amount;
+              return { ...bank, balance: newBalance };
+            }
+            return bank;
+          });
+        }
+
+        return {
+          ...prev,
+          transactions: prev.transactions.filter((t) => t.id !== id),
+          banks: updatedBanks,
+        };
+      });
     },
     [updateState]
   );
 
   const clearAll = useCallback((monthPrefix?: string) => {
-    updateState((prev) => ({
-      ...prev,
-      transactions: monthPrefix
-        ? prev.transactions.filter((tx) => !tx.date.startsWith(monthPrefix))
-        : [],
-    }));
+    updateState((prev) => {
+      const toRemove = monthPrefix
+        ? prev.transactions.filter((tx) => tx.date.startsWith(monthPrefix))
+        : prev.transactions;
+
+      // Reverse all balance changes
+      let updatedBanks = [...prev.banks];
+      for (const tx of toRemove) {
+        updatedBanks = updatedBanks.map((bank) => {
+          if (bank.id === tx.bankId) {
+            const currentBalance = bank.balance ?? 0;
+            const newBalance = tx.type === "expense"
+              ? currentBalance + tx.amount
+              : currentBalance - tx.amount;
+            return { ...bank, balance: newBalance };
+          }
+          return bank;
+        });
+      }
+
+      return {
+        ...prev,
+        transactions: monthPrefix
+          ? prev.transactions.filter((tx) => !tx.date.startsWith(monthPrefix))
+          : [],
+        banks: updatedBanks,
+      };
+    });
   }, [updateState]);
 
   const clearCategory = useCallback(
     (categoryId: string, monthPrefix?: string) => {
-      updateState((prev) => ({
-        ...prev,
-        transactions: prev.transactions.filter(
-          (tx) => tx.category !== categoryId || (monthPrefix ? !tx.date.startsWith(monthPrefix) : false)
-        ),
-      }));
+      updateState((prev) => {
+        const toRemove = prev.transactions.filter(
+          (tx) => tx.category === categoryId && (!monthPrefix || tx.date.startsWith(monthPrefix))
+        );
+
+        // Reverse balance changes
+        let updatedBanks = [...prev.banks];
+        for (const tx of toRemove) {
+          updatedBanks = updatedBanks.map((bank) => {
+            if (bank.id === tx.bankId) {
+              const currentBalance = bank.balance ?? 0;
+              const newBalance = tx.type === "expense"
+                ? currentBalance + tx.amount
+                : currentBalance - tx.amount;
+              return { ...bank, balance: newBalance };
+            }
+            return bank;
+          });
+        }
+
+        return {
+          ...prev,
+          transactions: prev.transactions.filter(
+            (tx) => tx.category !== categoryId || (monthPrefix ? !tx.date.startsWith(monthPrefix) : false)
+          ),
+          banks: updatedBanks,
+        };
+      });
     },
     [updateState]
   );
@@ -188,6 +273,8 @@ export function useExpenses() {
       const newBank: Bank = {
         ...bank,
         id: `bank_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        balance: bank.balance ?? 0,
+        initialBalance: bank.balance ?? 0,
       };
       updateState((prev) => ({
         ...prev,
@@ -202,7 +289,17 @@ export function useExpenses() {
     (id: string, updates: Partial<Bank>) => {
       updateState((prev) => ({
         ...prev,
-        banks: prev.banks.map((bank) => (bank.id === id ? { ...bank, ...updates } : bank)),
+        banks: prev.banks.map((bank) => {
+          if (bank.id === id) {
+            const updated = { ...bank, ...updates };
+            // If balance is being explicitly updated (from accounts page), also update initialBalance
+            if (updates.balance !== undefined && updates.initialBalance === undefined) {
+              updated.initialBalance = updates.balance;
+            }
+            return updated;
+          }
+          return bank;
+        }),
       }));
     },
     [updateState]

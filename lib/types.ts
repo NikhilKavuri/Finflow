@@ -2,6 +2,7 @@ export interface Bank {
   id: string;
   name: string;
   balance?: number;
+  initialBalance?: number;
 }
 
 export interface Transaction {

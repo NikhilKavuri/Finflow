@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useExpenses } from "@/hooks/useExpenses";
 import { getCategoryById } from "@/lib/categories";
@@ -16,14 +17,19 @@ import SpendFeed from "@/components/SpendFeed";
 import BottomNav from "@/components/BottomNav";
 import ExpenseDrawer from "@/components/ExpenseDrawer";
 import BudgetDrawer from "@/components/BudgetDrawer";
+import ViewExpensesDrawer from "@/components/ViewExpensesDrawer";
 import Toast from "@/components/Toast";
+import PageLoader, { DashboardSkeleton } from "@/components/PageLoader";
+import { List } from "lucide-react";
 
 export default function HomePage() {
-  const { loading } = useAuth();
+  const router = useRouter();
+  const { user, loading } = useAuth();
   const { state, hydrated, completeOnboarding, addTransaction, deleteTransaction, clearAll, clearCategory, updateBudget } =
     useExpenses();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [budgetOpen, setBudgetOpen] = useState(false);
+  const [viewExpensesOpen, setViewExpensesOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [selectedBankId, setSelectedBankId] = useState<string>("all");
@@ -32,6 +38,13 @@ export default function HomePage() {
   const previousMonth = getPreviousMonthPrefix();
   const [selectedMonth, setSelectedMonth] = useState(currentMonth);
   const isCurrentMonth = selectedMonth === currentMonth;
+
+  // Auth gate: redirect to login if not authenticated
+  useEffect(() => {
+    if (!loading && !user) {
+      router.replace("/login");
+    }
+  }, [user, loading, router]);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -72,7 +85,10 @@ export default function HomePage() {
   const dayCount = isCurrentMonth ? new Date().getDate() : getDaysInMonth(selectedMonth);
   const dailyAvg = dayCount > 0 ? totalSpent / dayCount : 0;
 
-  if (!hydrated || loading) return null;
+  // Show loader while auth or data is loading
+  if (loading) return <PageLoader message="Signing you in..." />;
+  if (!user) return null;
+  if (!hydrated) return <DashboardSkeleton />;
 
   return (
     <>
@@ -134,10 +150,27 @@ export default function HomePage() {
               />
             </motion.div>
 
+            {/* View All Expenses button */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.3, ease: [0.4, 0, 0.2, 1] }}
+            >
+              <motion.button
+                whileTap={{ scale: 0.98 }}
+                whileHover={{ translateY: -1 }}
+                onClick={() => setViewExpensesOpen(true)}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl border border-white/[0.06] bg-[#1e1e28] hover:bg-[#252533] text-sm font-semibold text-[#9898aa] hover:text-white transition-all mb-4"
+              >
+                <List size={16} className="text-[#8b6fff]" />
+                View All Expenses
+              </motion.button>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.35, ease: [0.4, 0, 0.2, 1] }}
             >
               <AnimatePresence initial={false} mode="wait">
                 {selectedCategory ? (
@@ -211,6 +244,25 @@ export default function HomePage() {
                   updateBudget(budget);
                   setBudgetOpen(false);
                   showToast("Budget updated");
+                }}
+              />
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence>
+            {viewExpensesOpen && (
+              <ViewExpensesDrawer
+                transactions={monthTxs}
+                banks={state.banks}
+                editable={isCurrentMonth}
+                onClose={() => setViewExpensesOpen(false)}
+                onDelete={(id) => {
+                  deleteTransaction(id);
+                  showToast("Transaction removed");
+                }}
+                onClearAll={() => {
+                  clearAll(selectedMonth);
+                  showToast("All transactions cleared");
                 }}
               />
             )}

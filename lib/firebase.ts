@@ -2,10 +2,18 @@ import { initializeApp, getApps, getApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import {
   getAuth,
-  signInAnonymously,
   setPersistence,
   browserLocalPersistence,
   onAuthStateChanged,
+  signInWithPopup,
+  GoogleAuthProvider,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  updatePassword as firebaseUpdatePassword,
+  updateProfile as firebaseUpdateProfile,
+  signOut as firebaseSignOut,
+  EmailAuthProvider,
+  reauthenticateWithCredential,
   type User,
 } from "firebase/auth";
 
@@ -52,19 +60,54 @@ function ensureAuthPersistence() {
   return persistencePromise;
 }
 
-export { db, auth, isFirebaseConfigured, onAuthStateChanged };
-export type { User };
+// ── Google Sign-In ──────────────────────────────────────────
+const googleProvider = new GoogleAuthProvider();
 
-export async function ensureAnonymousUser(): Promise<User> {
-  if (!auth) {
-    throw new Error(
-      "Firebase is not configured. Add the NEXT_PUBLIC_FIREBASE_* environment variables in Vercel and redeploy.",
-    );
-  }
-
+export async function signInWithGoogle(): Promise<User> {
+  if (!auth) throw new Error("Firebase is not configured.");
   await ensureAuthPersistence();
-  if (auth.currentUser) return auth.currentUser;
-
-  const result = await signInAnonymously(auth);
+  const result = await signInWithPopup(auth, googleProvider);
   return result.user;
 }
+
+// ── Email/Password Sign Up ──────────────────────────────────
+export async function signUpWithEmail(email: string, password: string, displayName: string): Promise<User> {
+  if (!auth) throw new Error("Firebase is not configured.");
+  await ensureAuthPersistence();
+  const result = await createUserWithEmailAndPassword(auth, email, password);
+  await firebaseUpdateProfile(result.user, { displayName });
+  return result.user;
+}
+
+// ── Email/Password Sign In ──────────────────────────────────
+export async function signInWithEmail(email: string, password: string): Promise<User> {
+  if (!auth) throw new Error("Firebase is not configured.");
+  await ensureAuthPersistence();
+  const result = await signInWithEmailAndPassword(auth, email, password);
+  return result.user;
+}
+
+// ── Change Password ─────────────────────────────────────────
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  if (!auth || !auth.currentUser || !auth.currentUser.email) {
+    throw new Error("No authenticated user found.");
+  }
+  const credential = EmailAuthProvider.credential(auth.currentUser.email, currentPassword);
+  await reauthenticateWithCredential(auth.currentUser, credential);
+  await firebaseUpdatePassword(auth.currentUser, newPassword);
+}
+
+// ── Update Profile ──────────────────────────────────────────
+export async function updateUserProfile(data: { displayName?: string; photoURL?: string }): Promise<void> {
+  if (!auth || !auth.currentUser) throw new Error("No authenticated user found.");
+  await firebaseUpdateProfile(auth.currentUser, data);
+}
+
+// ── Sign Out ────────────────────────────────────────────────
+export async function logOut(): Promise<void> {
+  if (!auth) return;
+  await firebaseSignOut(auth);
+}
+
+export { db, auth, isFirebaseConfigured, onAuthStateChanged };
+export type { User };

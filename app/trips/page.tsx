@@ -9,6 +9,7 @@ import BottomNav from "@/components/BottomNav";
 import TripCard from "@/components/TripCard";
 import CreateTripDrawer from "@/components/CreateTripDrawer";
 import Toast from "@/components/Toast";
+import PageLoader from "@/components/PageLoader";
 
 export default function TripsPage() {
   const router = useRouter();
@@ -36,7 +37,7 @@ export default function TripsPage() {
       )
     : archivedTrips;
 
-  if (!hydrated) return null;
+  if (!hydrated) return <PageLoader message="Loading trips..." />;
 
   return (
     <div className="app-screen mx-auto flex w-full max-w-[480px] flex-col overflow-x-hidden pb-24">

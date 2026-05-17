@@ -18,6 +18,7 @@ import BottomNav from "@/components/BottomNav";
 import BalanceChart from "@/components/BalanceChart";
 import TripExpenseDrawer from "@/components/TripExpenseDrawer";
 import Toast from "@/components/Toast";
+import PageLoader from "@/components/PageLoader";
 
 export default function TripDetailPage() {
   const params = useParams();
@@ -56,7 +57,7 @@ export default function TripDetailPage() {
   const memberSpending = useMemo(() => (trip ? getMemberSpending(trip) : {}), [trip]);
   const perPersonAvg = trip && trip.members.length > 0 ? total / trip.members.length : 0;
 
-  if (!hydrated) return null;
+  if (!hydrated) return <PageLoader message="Loading trip..." />;
 
   if (!trip) {
     return (
