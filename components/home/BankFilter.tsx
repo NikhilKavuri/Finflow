@@ -2,8 +2,9 @@
 
 import { useRef, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Layers } from "lucide-react";
+import { Layers, Wallet } from "lucide-react";
 import type { Bank } from "@/lib/types";
+import { formatINR } from "@/lib/utils";
 
 interface Props {
   banks: Bank[];
@@ -15,7 +16,6 @@ export default function BankFilter({ banks, selectedBankId, onBankChange }: Prop
   const scrollRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLButtonElement>(null);
 
-  // Auto-scroll to active chip
   useEffect(() => {
     if (activeRef.current && scrollRef.current) {
       const container = scrollRef.current;
@@ -34,7 +34,9 @@ export default function BankFilter({ banks, selectedBankId, onBankChange }: Prop
     }
   }, [selectedBankId]);
 
-  const isAllBanks = selectedBankId === "all";
+  const totalBankBalance = banks.reduce((sum, bank) => sum + (bank.balance ?? 0), 0);
+  const selectedBank =
+    selectedBankId !== "all" ? banks.find((b) => b.id === selectedBankId) : null;
 
   const allBanksOptions = [
     { id: "all", name: "All Banks", isAll: true },
@@ -83,6 +85,38 @@ export default function BankFilter({ banks, selectedBankId, onBankChange }: Prop
           );
         })}
       </div>
+
+      {banks.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mt-3 flex items-center justify-between rounded-2xl border border-white/[0.08] bg-[#1e1e28]/90 px-4 py-3"
+        >
+          <div className="flex min-w-0 flex-1 items-center gap-2.5">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#6c47ff]/15 text-[#8b6fff]">
+              <Wallet size={16} />
+            </div>
+            <div className="min-w-0">
+              <div className="text-[11px] font-semibold uppercase tracking-widest text-[#5a5a6e]">
+                {selectedBank ? `${selectedBank.name} balance` : "Total across banks"}
+              </div>
+              <div className="font-syne truncate text-xl font-bold text-white">
+                {formatINR(selectedBank ? (selectedBank.balance ?? 0) : totalBankBalance)}
+              </div>
+            </div>
+          </div>
+          {selectedBank && (
+            <div className="shrink-0 pl-3 text-right">
+              <div className="text-[10px] font-semibold uppercase tracking-widest text-[#5a5a6e]">
+                All banks
+              </div>
+              <div className="text-sm font-semibold text-[#9898aa]">
+                {formatINR(totalBankBalance)}
+              </div>
+            </div>
+          )}
+        </motion.div>
+      )}
     </div>
   );
 }
