@@ -28,6 +28,14 @@ export default function BalanceChart({ balances, onSettle, interactive = true }:
 
   return (
     <div className="space-y-2">
+      <div className="px-1 mb-1">
+        <h4 className="text-[10px] font-semibold text-[#5a5a6e] uppercase tracking-wider">
+          Simplified Settlements
+        </h4>
+        <p className="text-[10px] text-[#5a5a6e]/70 mt-0.5">
+          Minimum transfers needed to settle all debts
+        </p>
+      </div>
       {balances.map((entry, i) => (
         <motion.div
           key={`${entry.from.id}-${entry.to.id}-${i}`}

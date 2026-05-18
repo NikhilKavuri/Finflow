@@ -24,7 +24,7 @@ export default function Onboarding({ onComplete }: { onComplete: (budget: number
         className="text-center mb-12"
       >
         <h1 className="font-syne text-5xl font-black gradient-text mb-3">FinFlow</h1>
-        <p className="text-[#9898aa] text-base">Premium expense tracking for the Hyderabad dev lifestyle</p>
+        <p className="text-[#9898aa] text-base">Your personalized Expense Tracker</p>
       </motion.div>
 
       <motion.div

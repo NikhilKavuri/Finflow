@@ -134,6 +134,11 @@ function TxItem({
         <div className="text-[11px] text-[#5a5a6e] mt-0.5 flex items-center gap-1.5">
           <span>{cat.name}</span>
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#6c47ff]/15 text-[10px] font-semibold text-[#8b6fff]">🏦 {bankName}</span>
+          {tx.paymentMethod && tx.paymentMethod !== "other" && (
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-white/[0.04] text-[10px] font-semibold text-[#9898aa]">
+              {tx.paymentMethod === "credit_card" ? "💳" : tx.paymentMethod === "upi" ? "📱" : tx.paymentMethod === "cash" ? "💵" : "🏦"}
+            </span>
+          )}
         </div>
       </div>
       <div className={`font-syne text-[15px] font-bold flex-shrink-0 ${tx.type === "income" ? "text-[#2ce88a]" : "text-[#ff4f6b]"}`}>

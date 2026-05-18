@@ -12,11 +12,14 @@ import TopNav from "@/components/TopNav";
 import BankFilter from "@/components/BankFilter";
 import BalanceCard from "@/components/BalanceCard";
 import QuickStats from "@/components/QuickStats";
+import PaymentPlanCard from "@/components/PaymentPlanCard";
+import PaymentBreakdown from "@/components/PaymentBreakdown";
 import CategoryBreakdown from "@/components/CategoryBreakdown";
 import SpendFeed from "@/components/SpendFeed";
 import BottomNav from "@/components/BottomNav";
 import ExpenseDrawer from "@/components/ExpenseDrawer";
 import BudgetDrawer from "@/components/BudgetDrawer";
+import PaymentMethodsDrawer from "@/components/PaymentMethodsDrawer";
 import ViewExpensesDrawer from "@/components/ViewExpensesDrawer";
 import Toast from "@/components/Toast";
 import PageLoader, { DashboardSkeleton } from "@/components/PageLoader";
@@ -25,10 +28,22 @@ import { List } from "lucide-react";
 export default function HomePage() {
   const router = useRouter();
   const { user, loading } = useAuth();
-  const { state, hydrated, completeOnboarding, addTransaction, deleteTransaction, clearAll, clearCategory, updateBudget } =
-    useExpenses();
+  const {
+    state,
+    hydrated,
+    completeOnboarding,
+    addTransaction,
+    deleteTransaction,
+    clearAll,
+    clearCategory,
+    updateBudget,
+    addPaymentMethod,
+    updatePaymentMethod,
+    deletePaymentMethod,
+  } = useExpenses();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [budgetOpen, setBudgetOpen] = useState(false);
+  const [paymentMethodsOpen, setPaymentMethodsOpen] = useState(false);
   const [viewExpensesOpen, setViewExpensesOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
@@ -111,7 +126,7 @@ export default function HomePage() {
             onBankChange={setSelectedBankId}
           />
 
-          <main className="flex-1 px-4 space-y-0">
+          <main className="flex-1 space-y-5 px-4 pb-6 pt-2">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -134,6 +149,21 @@ export default function HomePage() {
             >
               <QuickStats totalIncome={totalIncome} dailyAvg={dailyAvg} />
             </motion.div>
+
+            <PaymentPlanCard
+              transactions={state.transactions}
+              paymentMethods={state.paymentMethods || []}
+              budget={state.budget}
+              budgetCycleStartDay={state.budgetCycleStartDay}
+              selectedMonth={selectedMonth}
+              onEditBudget={() => setBudgetOpen(true)}
+              onManagePaymentMethods={() => setPaymentMethodsOpen(true)}
+            />
+
+            <PaymentBreakdown
+              expenses={expenses}
+              paymentMethods={state.paymentMethods || []}
+            />
 
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -225,6 +255,7 @@ export default function HomePage() {
             {drawerOpen && (
               <ExpenseDrawer
                 banks={state.banks}
+                paymentMethods={state.paymentMethods || []}
                 onClose={() => setDrawerOpen(false)}
                 onSubmit={(data) => {
                   addTransaction(data);
@@ -239,11 +270,33 @@ export default function HomePage() {
             {budgetOpen && (
               <BudgetDrawer
                 initialBudget={state.budget}
+                initialBudgetCycleStartDay={state.budgetCycleStartDay}
                 onClose={() => setBudgetOpen(false)}
-                onSubmit={(budget) => {
-                  updateBudget(budget);
+                onSubmit={(budget, budgetCycleStartDay) => {
+                  updateBudget(budget, budgetCycleStartDay);
                   setBudgetOpen(false);
                   showToast("Budget updated");
+                }}
+              />
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence>
+            {paymentMethodsOpen && (
+              <PaymentMethodsDrawer
+                paymentMethods={state.paymentMethods || []}
+                onClose={() => setPaymentMethodsOpen(false)}
+                onAdd={(method) => {
+                  addPaymentMethod(method);
+                  showToast("Payment method added");
+                }}
+                onUpdate={(id, updates) => {
+                  updatePaymentMethod(id, updates);
+                  showToast("Payment method updated");
+                }}
+                onDelete={(id) => {
+                  deletePaymentMethod(id);
+                  showToast("Payment method removed");
                 }}
               />
             )}

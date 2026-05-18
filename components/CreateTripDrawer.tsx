@@ -9,12 +9,12 @@ interface Props {
   onSubmit: (name: string, emoji: string, members: { name: string; avatar: string }[]) => void;
 }
 
-const EMOJI_OPTIONS = ["✈️", "🏖️", "🏔️", "🚗", "🎉", "🏠", "🎓", "🍕", "⛺", "🎪", "🚀", "🌴"];
+const EMOJI_OPTIONS = ["💰", "🍕", "🏠", "🎓", "🤝", "🚗", "🎉", "✈️", "⛺", "🎪", "🛒", "🌴"];
 const AVATAR_OPTIONS = ["😎", "🤩", "😊", "🥳", "🧐", "😈", "🦊", "🐻", "🦁", "🐸", "🌸", "⭐"];
 
 export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
   const [name, setName] = useState("");
-  const [emoji, setEmoji] = useState("✈️");
+  const [emoji, setEmoji] = useState("💰");
   const [members, setMembers] = useState<{ name: string; avatar: string }[]>([
     { name: "", avatar: "😎" },
     { name: "", avatar: "🤩" },
@@ -56,7 +56,7 @@ export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
 
   const handleSubmit = () => {
     if (!name.trim()) {
-      setError("Give your trip a name");
+      setError("Give your split a name");
       return;
     }
     const validMembers = members.filter((m) => m.name.trim());
@@ -99,7 +99,7 @@ export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-[max(2rem,env(safe-area-inset-bottom))] pt-2">
           <div className="flex items-center justify-between mb-5">
-            <h2 className="font-syne text-lg font-bold text-white">New Trip</h2>
+            <h2 className="font-syne text-lg font-bold text-white">New Split</h2>
             <motion.button
               whileTap={{ scale: 0.88 }}
               onClick={onClose}
@@ -115,14 +115,14 @@ export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
             </div>
           )}
 
-          {/* Trip Name */}
+          {/* Split Name */}
           <div className="mb-4">
             <label className="block text-[11px] font-semibold text-[#5a5a6e] tracking-widest uppercase mb-2">
-              Trip Name
+              Split Name
             </label>
             <input
               className="w-full bg-[#1e1e28] border border-white/10 rounded-xl px-4 py-3 text-base text-white placeholder-[#5a5a6e] outline-none focus:border-[#8b6fff] transition-colors"
-              placeholder="e.g. Goa Trip, Weekend Getaway..."
+              placeholder="e.g. Roommates, Dinner, Road Trip..."
               value={name}
               onChange={(e) => {
                 setName(e.target.value);
@@ -131,10 +131,10 @@ export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
             />
           </div>
 
-          {/* Trip Emoji */}
+          {/* Icon */}
           <div className="mb-4">
             <label className="block text-[11px] font-semibold text-[#5a5a6e] tracking-widest uppercase mb-2">
-              Trip Icon
+              Icon
             </label>
             <div className="flex gap-2 flex-wrap">
               {EMOJI_OPTIONS.map((e) => (
@@ -226,7 +226,7 @@ export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
             className="w-full py-4 rounded-2xl font-syne text-base font-bold text-white glow-accent transition-all"
             style={{ background: "linear-gradient(135deg, #6c47ff, #8b6fff)" }}
           >
-            Create Trip ✈️
+            Create Split 💰
           </motion.button>
         </div>
       </motion.div>

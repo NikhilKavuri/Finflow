@@ -21,9 +21,11 @@ export function syncExpensesToFirestore(uid: string, state: AppState) {
       const ref = doc(firestore, "users", uid, "data", "expenses");
       await setDoc(ref, {
         budget: state.budget,
+        budgetCycleStartDay: state.budgetCycleStartDay,
         transactions: state.transactions,
         onboarded: state.onboarded,
         banks: state.banks,
+        paymentMethods: state.paymentMethods,
         updatedAt: new Date().toISOString(),
       });
     } catch (error) {
@@ -47,9 +49,11 @@ export async function loadExpensesFromFirestore(uid: string): Promise<AppState |
       const data = snapshot.data();
       return {
         budget: data.budget ?? 80000,
+        budgetCycleStartDay: data.budgetCycleStartDay ?? 5,
         transactions: Array.isArray(data.transactions) ? data.transactions : [],
         onboarded: data.onboarded ?? false,
         banks: Array.isArray(data.banks) ? data.banks : [{ id: "default", name: "Default Bank" }],
+        paymentMethods: Array.isArray(data.paymentMethods) ? data.paymentMethods : [],
       };
     }
     return null;
@@ -79,6 +83,30 @@ export function syncTripsToFirestore(uid: string, trips: TripSession[]) {
       console.warn("Firestore trip sync failed:", error);
     }
   }, 2000);
+}
+
+/**
+ * Save trips to Firestore immediately (no debounce).
+ * Use for destructive operations like delete where we need
+ * the data persisted before navigating away.
+ */
+export async function syncTripsToFirestoreImmediate(uid: string, trips: TripSession[]) {
+  if (!db || !isFirebaseConfigured()) return;
+
+  const firestore = db as Firestore;
+
+  // Cancel any pending debounced sync
+  if (tripTimer) clearTimeout(tripTimer);
+
+  try {
+    const ref = doc(firestore, "users", uid, "data", "trips");
+    await setDoc(ref, {
+      trips,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.warn("Firestore immediate trip sync failed:", error);
+  }
 }
 
 /**

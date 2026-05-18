@@ -5,6 +5,8 @@ export interface Bank {
   initialBalance?: number;
 }
 
+export type PaymentMethod = "credit_card" | "upi" | "cash" | "bank_transfer" | "other";
+
 export interface Transaction {
   id: string;
   name: string;
@@ -13,13 +15,30 @@ export interface Transaction {
   type: "expense" | "income";
   date: string; // ISO yyyy-mm-dd
   bankId: string;
+  paymentMethod?: PaymentMethod;
+  paymentMethodId?: string;
 }
 
 export interface AppState {
   budget: number;
+  budgetCycleStartDay: number;
   transactions: Transaction[];
   onboarded: boolean;
   banks: Bank[];
+  paymentMethods: PaymentMethodConfig[];
+}
+
+// ── Payment Method Config ───────────────────────────────────
+
+export interface PaymentMethodConfig {
+  id: string;
+  name: string;
+  type: PaymentMethod;
+  emoji: string;
+  /** For credit cards: billing cycle start day (1-28). e.g. 15 means cycle is 15th-14th */
+  billingCycleStart?: number;
+  /** For credit cards: payment due day (1-28). e.g. 5 means bill is due on the 5th */
+  paymentDueDay?: number;
 }
 
 // ── Trip / Splitwise Types ──────────────────────────────────

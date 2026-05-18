@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import type { TripSession, TripExpense, TripMember, TripSettlement } from "@/lib/types";
 import { getTodayISO } from "@/lib/utils";
-import { syncTripsToFirestore, loadTripsFromFirestore } from "@/lib/firestore";
+import { syncTripsToFirestore, syncTripsToFirestoreImmediate, loadTripsFromFirestore } from "@/lib/firestore";
 
 const TRIPS_KEY = "finflow_trips";
 const UID_KEY = "finflow_uid";
@@ -293,10 +293,19 @@ export function useTrips() {
   );
 
   const deleteTrip = useCallback(
-    (tripId: string) => {
-      updateTrips((prev) => prev.filter((t) => t.id !== tripId));
+    async (tripId: string) => {
+      const prev = trips;
+      const next = prev.filter((t) => t.id !== tripId);
+      // Update state and localStorage immediately
+      setTrips(next);
+      saveTrips(next);
+      // Flush to Firestore immediately (no debounce) so data is persisted before navigation
+      const uid = uidRef.current || localStorage.getItem(UID_KEY);
+      if (uid) {
+        await syncTripsToFirestoreImmediate(uid, next);
+      }
     },
-    [updateTrips]
+    [trips]
   );
 
   const getTrip = useCallback(

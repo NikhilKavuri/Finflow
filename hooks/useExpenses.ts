@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import type { AppState, Transaction, Bank } from "@/lib/types";
+import type { AppState, Transaction, Bank, PaymentMethodConfig } from "@/lib/types";
 import { getTodayISO } from "@/lib/utils";
 import { syncExpensesToFirestore, loadExpensesFromFirestore } from "@/lib/firestore";
 
@@ -10,12 +10,44 @@ const STORAGE_KEY = "finflow_state";
 const UID_KEY = "finflow_uid";
 const MIGRATED_KEY = "finflow_migrated";
 
+const DEFAULT_PAYMENT_METHODS: PaymentMethodConfig[] = [
+  { id: "pm_card", name: "Credit Card", type: "credit_card", emoji: "💳", billingCycleStart: 15, paymentDueDay: 5 },
+  { id: "pm_upi", name: "UPI", type: "upi", emoji: "📱" },
+  { id: "pm_cash", name: "Cash", type: "cash", emoji: "💵" },
+];
+
 const DEFAULT_STATE: AppState = {
   budget: 80000,
+  budgetCycleStartDay: 5,
   transactions: [],
   onboarded: false,
   banks: [{ id: "default", name: "Default Bank", balance: 0, initialBalance: 0 }],
+  paymentMethods: DEFAULT_PAYMENT_METHODS,
 };
+
+function normalizeDay(value: unknown, fallback: number): number {
+  const day = Number(value);
+  if (!Number.isFinite(day)) return fallback;
+  return Math.min(28, Math.max(1, Math.round(day)));
+}
+
+function normalizePaymentMethods(methods: unknown): PaymentMethodConfig[] {
+  if (!Array.isArray(methods) || methods.length === 0) return DEFAULT_PAYMENT_METHODS;
+
+  return methods.map((pm: any, index) => ({
+    id: pm.id || `pm_${index}`,
+    name: pm.name || "Payment Method",
+    type: pm.type || "other",
+    emoji: pm.emoji || "💳",
+    billingCycleStart: pm.type === "credit_card" ? normalizeDay(pm.billingCycleStart, 15) : undefined,
+    paymentDueDay: pm.type === "credit_card" ? normalizeDay(pm.paymentDueDay, 5) : undefined,
+  }));
+}
+
+function getBankBalanceDelta(tx: Pick<Transaction, "amount" | "type" | "paymentMethod">): number {
+  if (tx.type === "expense" && tx.paymentMethod === "credit_card") return 0;
+  return tx.type === "expense" ? -tx.amount : tx.amount;
+}
 
 function loadState(): AppState {
   if (typeof window === "undefined") return DEFAULT_STATE;
@@ -25,6 +57,7 @@ function loadState(): AppState {
     const parsed = { ...DEFAULT_STATE, ...JSON.parse(raw) };
     return {
       ...parsed,
+      budgetCycleStartDay: normalizeDay(parsed.budgetCycleStartDay, DEFAULT_STATE.budgetCycleStartDay),
       transactions: Array.isArray(parsed.transactions)
         ? parsed.transactions
             .filter((tx: Transaction) => !/^s\d+$/.test(tx.id))
@@ -37,6 +70,7 @@ function loadState(): AppState {
             initialBalance: b.initialBalance ?? b.balance ?? 0,
           }))
         : DEFAULT_STATE.banks,
+      paymentMethods: normalizePaymentMethods(parsed.paymentMethods),
     };
   } catch {
     return DEFAULT_STATE;
@@ -88,8 +122,16 @@ export function useExpenses() {
         try {
           const firestoreState = await loadExpensesFromFirestore(uid);
           if (firestoreState && firestoreState.onboarded) {
-            setState(firestoreState);
-            saveState(firestoreState); // Restore to localStorage too
+            const restoredState: AppState = {
+              ...firestoreState,
+              budgetCycleStartDay: normalizeDay(
+                firestoreState.budgetCycleStartDay,
+                DEFAULT_STATE.budgetCycleStartDay
+              ),
+              paymentMethods: normalizePaymentMethods(firestoreState.paymentMethods),
+            };
+            setState(restoredState);
+            saveState(restoredState); // Restore to localStorage too
             setHydrated(true);
             return;
           }
@@ -147,9 +189,7 @@ export function useExpenses() {
         const updatedBanks = prev.banks.map((bank) => {
           if (bank.id === newTx.bankId) {
             const currentBalance = bank.balance ?? 0;
-            const newBalance = newTx.type === "expense"
-              ? currentBalance - newTx.amount
-              : currentBalance + newTx.amount;
+            const newBalance = currentBalance + getBankBalanceDelta(newTx);
             return { ...bank, balance: newBalance };
           }
           return bank;
@@ -177,9 +217,7 @@ export function useExpenses() {
           updatedBanks = prev.banks.map((bank) => {
             if (bank.id === tx.bankId) {
               const currentBalance = bank.balance ?? 0;
-              const newBalance = tx.type === "expense"
-                ? currentBalance + tx.amount
-                : currentBalance - tx.amount;
+              const newBalance = currentBalance - getBankBalanceDelta(tx);
               return { ...bank, balance: newBalance };
             }
             return bank;
@@ -208,9 +246,7 @@ export function useExpenses() {
         updatedBanks = updatedBanks.map((bank) => {
           if (bank.id === tx.bankId) {
             const currentBalance = bank.balance ?? 0;
-            const newBalance = tx.type === "expense"
-              ? currentBalance + tx.amount
-              : currentBalance - tx.amount;
+            const newBalance = currentBalance - getBankBalanceDelta(tx);
             return { ...bank, balance: newBalance };
           }
           return bank;
@@ -240,9 +276,7 @@ export function useExpenses() {
           updatedBanks = updatedBanks.map((bank) => {
             if (bank.id === tx.bankId) {
               const currentBalance = bank.balance ?? 0;
-              const newBalance = tx.type === "expense"
-                ? currentBalance + tx.amount
-                : currentBalance - tx.amount;
+              const newBalance = currentBalance - getBankBalanceDelta(tx);
               return { ...bank, balance: newBalance };
             }
             return bank;
@@ -262,8 +296,14 @@ export function useExpenses() {
   );
 
   const updateBudget = useCallback(
-    (budget: number) => {
-      updateState((prev) => ({ ...prev, budget }));
+    (budget: number, budgetCycleStartDay?: number) => {
+      updateState((prev) => ({
+        ...prev,
+        budget,
+        budgetCycleStartDay: budgetCycleStartDay
+          ? normalizeDay(budgetCycleStartDay, prev.budgetCycleStartDay)
+          : prev.budgetCycleStartDay,
+      }));
     },
     [updateState]
   );
@@ -318,6 +358,43 @@ export function useExpenses() {
     [updateState]
   );
 
+  const addPaymentMethod = useCallback(
+    (pm: Omit<PaymentMethodConfig, "id">) => {
+      const newPm: PaymentMethodConfig = {
+        ...pm,
+        id: `pm_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      };
+      updateState((prev) => ({
+        ...prev,
+        paymentMethods: [...prev.paymentMethods, newPm],
+      }));
+      return newPm;
+    },
+    [updateState]
+  );
+
+  const updatePaymentMethod = useCallback(
+    (id: string, updates: Partial<PaymentMethodConfig>) => {
+      updateState((prev) => ({
+        ...prev,
+        paymentMethods: prev.paymentMethods.map((pm) =>
+          pm.id === id ? { ...pm, ...updates } : pm
+        ),
+      }));
+    },
+    [updateState]
+  );
+
+  const deletePaymentMethod = useCallback(
+    (id: string) => {
+      updateState((prev) => ({
+        ...prev,
+        paymentMethods: prev.paymentMethods.filter((pm) => pm.id !== id),
+      }));
+    },
+    [updateState]
+  );
+
   return {
     state,
     hydrated,
@@ -330,5 +407,8 @@ export function useExpenses() {
     addBank,
     updateBank,
     deleteBank,
+    addPaymentMethod,
+    updatePaymentMethod,
+    deletePaymentMethod,
   };
 }

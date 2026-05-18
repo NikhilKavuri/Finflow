@@ -5,23 +5,25 @@ import { motion, AnimatePresence } from "framer-motion";
 import { CalendarDays, X, Check, ChevronDown } from "lucide-react";
 import { CATEGORIES, type Category } from "@/lib/categories";
 import { classifyExpense } from "@/lib/classifier";
-import type { Transaction, Bank } from "@/lib/types";
+import type { Transaction, Bank, PaymentMethodConfig } from "@/lib/types";
 import { formatDate, formatMonthLabel, getCurrentMonthPrefix, getTodayISO } from "@/lib/utils";
 
 interface Props {
   onClose: () => void;
   onSubmit: (data: Omit<Transaction, "id">) => void;
   banks: Bank[];
+  paymentMethods: PaymentMethodConfig[];
 }
 
 type TxType = "expense" | "income";
 
-export default function ExpenseDrawer({ onClose, onSubmit, banks }: Props) {
+export default function ExpenseDrawer({ onClose, onSubmit, banks, paymentMethods }: Props) {
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(getTodayISO());
   const [selectedCat, setSelectedCat] = useState<string | null>(null);
   const [txType, setTxType] = useState<TxType>("expense");
+  const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState<string>(paymentMethods[0]?.id || "");
   const [selectedBankId, setSelectedBankId] = useState<string>(banks[0]?.id || "default");
   const [bankDropdownOpen, setBankDropdownOpen] = useState(false);
   const bankDropdownRef = useRef<HTMLDivElement>(null);
@@ -34,6 +36,7 @@ export default function ExpenseDrawer({ onClose, onSubmit, banks }: Props) {
   const monthDays = Array.from({ length: currentDay }, (_, index) => index + 1);
 
   const selectedBank = banks.find((b) => b.id === selectedBankId) ?? banks[0];
+  const selectedPaymentMethod = paymentMethods.find((p) => p.id === selectedPaymentMethodId);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -72,6 +75,12 @@ export default function ExpenseDrawer({ onClose, onSubmit, banks }: Props) {
     }
   }, [bankDropdownOpen]);
 
+  useEffect(() => {
+    if (paymentMethods.length > 0 && !paymentMethods.some((pm) => pm.id === selectedPaymentMethodId)) {
+      setSelectedPaymentMethodId(paymentMethods[0].id);
+    }
+  }, [paymentMethods, selectedPaymentMethodId]);
+
   const handleNameChange = useCallback((val: string) => {
     setName(val);
     const cat = classifyExpense(val);
@@ -90,7 +99,17 @@ export default function ExpenseDrawer({ onClose, onSubmit, banks }: Props) {
     if (isNaN(amt) || amt <= 0) { setError("Enter a valid amount."); return; }
     if (!date.startsWith(currentMonth)) { setError("Only the current month can be edited."); return; }
     const cat = selectedCat ?? aiSuggest?.id ?? "other";
-    onSubmit({ name: name.trim(), amount: amt, category: cat, type: txType, date, bankId: selectedBankId });
+    const pm = paymentMethods.find((p) => p.id === selectedPaymentMethodId);
+    onSubmit({
+      name: name.trim(),
+      amount: amt,
+      category: cat,
+      type: txType,
+      date,
+      bankId: selectedBankId,
+      paymentMethod: pm?.type || "other",
+      paymentMethodId: pm?.id,
+    });
   };
 
   return (
@@ -253,6 +272,33 @@ export default function ExpenseDrawer({ onClose, onSubmit, banks }: Props) {
               ))}
             </div>
           </div>
+
+          {/* Payment Method */}
+          {paymentMethods.length > 0 && (
+          <div className="mb-4">
+            <label className="block text-[11px] font-semibold text-[#5a5a6e] tracking-widest uppercase mb-2">Payment Method</label>
+            <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1">
+              {paymentMethods.map((pm) => (
+                <button key={pm.id} onClick={() => setSelectedPaymentMethodId(pm.id)}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border whitespace-nowrap transition-all
+                    ${selectedPaymentMethodId === pm.id ? "bg-[#6c47ff]/20 border-[#8b6fff] text-[#8b6fff]" : "bg-[#1e1e28] border-white/10 text-[#9898aa]"}`}>
+                  <span className="text-sm">{pm.emoji}</span>
+                  {pm.name}
+                </button>
+              ))}
+            </div>
+            {selectedPaymentMethod?.type === "credit_card" && (
+              <div className="mt-2 rounded-xl border border-[#ffb830]/20 bg-[#ffb830]/10 px-3 py-2">
+                <div className="text-[11px] font-semibold text-[#ffb830]">
+                  Card cycle starts on day {selectedPaymentMethod.billingCycleStart ?? 15}; pay on day {selectedPaymentMethod.paymentDueDay ?? 5}.
+                </div>
+                <div className="mt-0.5 text-[10px] leading-relaxed text-[#9898aa]">
+                  This will not reduce bank balance today. It is planned when the card bill is due.
+                </div>
+              </div>
+            )}
+          </div>
+          )}
 
           {/* Bank - Custom Dropdown */}
           <div className="mb-4 relative" ref={bankDropdownRef}>

@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Plus, Home, Plane, Wallet, User } from "lucide-react";
+import { Plus, Home, Split, Wallet, User } from "lucide-react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
@@ -16,13 +16,13 @@ export default function BottomNav({ disabled = false, onAddClick }: Props) {
   const { user } = useAuth();
   const isHome = pathname === "/";
   const isAccounts = pathname === "/accounts";
-  const isTrips = pathname?.startsWith("/trips");
+  const isTrips = pathname?.startsWith("/splits");
   const isProfile = pathname === "/profile";
 
   const tabs = [
     { href: "/", label: "Home", icon: Home, active: isHome },
     { href: "/accounts", label: "Accounts", icon: Wallet, active: isAccounts },
-    { href: "/trips", label: "Trips", icon: Plane, active: isTrips },
+    { href: "/splits", label: "Splits", icon: Split, active: isTrips },
     { href: "/profile", label: "Profile", icon: User, active: isProfile, isProfileTab: true },
   ];
 

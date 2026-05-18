@@ -84,7 +84,7 @@ export default function CategoryBreakdown({ expenses, selectedCategoryId, onCate
     <div className="mb-5">
       <div className="flex items-center justify-between mb-3">
         <div>
-          <h2 className="font-syne text-[15px] font-bold text-white">Category Breakdown</h2>
+          <h2 className="font-syne text-[15px] font-bold text-white mt-4">Category Breakdown</h2>
           <p className="text-[11px] text-[#8b6fff] mt-1">Tap a category to view its spend feed.</p>
         </div>
       </div>

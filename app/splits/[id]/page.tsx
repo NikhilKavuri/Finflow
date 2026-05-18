@@ -44,6 +44,8 @@ export default function TripDetailPage() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"expenses" | "balances">("expenses");
   const [toast, setToast] = useState<string | null>(null);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const AVATAR_OPTIONS = ["😎", "🤩", "😊", "🥳", "🧐", "😈", "🦊", "🐻", "🦁", "🐸", "🌸", "⭐"];
 
@@ -57,22 +59,22 @@ export default function TripDetailPage() {
   const memberSpending = useMemo(() => (trip ? getMemberSpending(trip) : {}), [trip]);
   const perPersonAvg = trip && trip.members.length > 0 ? total / trip.members.length : 0;
 
-  if (!hydrated) return <PageLoader message="Loading trip..." />;
+  if (!hydrated) return <PageLoader message="Loading split..." />;
 
   if (!trip) {
     return (
       <div className="app-screen mx-auto flex w-full max-w-[480px] flex-col items-center justify-center text-center px-6">
         <div className="text-4xl mb-4">🤔</div>
-        <h2 className="font-syne text-lg font-bold text-white mb-2">Trip not found</h2>
+        <h2 className="font-syne text-lg font-bold text-white mb-2">Split not found</h2>
         <p className="text-sm text-[#5a5a6e] mb-6">
-          This trip may have been deleted or the link is invalid.
+          This split may have been deleted or the link is invalid.
         </p>
         <motion.button
           whileTap={{ scale: 0.95 }}
-          onClick={() => router.push("/trips")}
+          onClick={() => router.push("/splits")}
           className="px-6 py-3 rounded-2xl text-sm font-bold text-white bg-[#6c47ff]"
         >
-          Back to Trips
+          Back to Splits
         </motion.button>
       </div>
     );
@@ -86,6 +88,17 @@ export default function TripDetailPage() {
     showToast("Member added");
   };
 
+  const handleDeleteSplit = async () => {
+    setIsDeleting(true);
+    try {
+      await deleteTrip(tripId);
+      router.push("/splits");
+    } catch {
+      showToast("Failed to delete. Try again.");
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <div className="app-screen mx-auto flex w-full max-w-[480px] flex-col overflow-x-hidden pb-24">
       {/* Header */}
@@ -93,7 +106,7 @@ export default function TripDetailPage() {
         <div className="flex items-center justify-between px-4 py-3">
           <motion.button
             whileTap={{ scale: 0.9 }}
-            onClick={() => router.push("/trips")}
+            onClick={() => router.push("/splits")}
             className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center"
           >
             <ArrowLeft size={18} />
@@ -149,32 +162,31 @@ export default function TripDetailPage() {
                       onClick={() => {
                         archiveTrip(tripId);
                         setMenuOpen(false);
-                        showToast(trip.archived ? "Trip restored" : "Trip archived");
+                        showToast(trip.archived ? "Split restored" : "Split archived");
                       }}
                       className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-white hover:bg-white/[0.04] transition-colors"
                     >
                       {trip.archived ? (
                         <>
                           <ArchiveRestore size={15} className="text-[#b8ff57]" />
-                          Restore Trip
+                          Restore Split
                         </>
                       ) : (
                         <>
                           <Archive size={15} className="text-[#facc15]" />
-                          Archive Trip
+                          Archive Split
                         </>
                       )}
                     </button>
                     <button
                       onClick={() => {
-                        deleteTrip(tripId);
                         setMenuOpen(false);
-                        router.push("/trips");
+                        setConfirmDeleteOpen(true);
                       }}
                       className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-red-400 hover:bg-red-500/[0.06] transition-colors"
                     >
                       <Trash2 size={15} />
-                      Delete Trip
+                      Delete Split
                     </button>
                   </motion.div>
                 </>
@@ -272,6 +284,13 @@ export default function TripDetailPage() {
                     const payer = trip.members.find((m) => m.id === expense.paidBy);
                     const splitCount = expense.splitAmong.length;
                     const perPerson = splitCount > 0 ? expense.amount / splitCount : 0;
+                    // Members who owe (everyone in splitAmong except the payer)
+                    const owingMembers = expense.splitAmong
+                      .filter((id) => id !== expense.paidBy)
+                      .map((id) => trip.members.find((m) => m.id === id))
+                      .filter(Boolean);
+                    // Does the payer owe themselves a share?
+                    const payerInSplit = expense.splitAmong.includes(expense.paidBy);
 
                     return (
                       <motion.div
@@ -304,27 +323,42 @@ export default function TripDetailPage() {
                                 {" · "}
                                 {formatDate(expense.date)}
                               </span>
-                              <span className="text-[10px] text-[#5a5a6e]">
-                                ₹{Math.round(perPerson)} × {splitCount}
-                              </span>
                             </div>
 
-                            {/* Split members */}
-                            <div className="flex -space-x-1 mt-2">
-                              {expense.splitAmong
-                                .map((id) => trip.members.find((m) => m.id === id))
-                                .filter(Boolean)
-                                .slice(0, 6)
-                                .map((member, idx) => (
-                                  <div
-                                    key={member!.id}
-                                    className="w-5 h-5 rounded-full bg-[#252533] border border-[#1a1a24] flex items-center justify-center text-[8px]"
-                                    style={{ zIndex: 6 - idx }}
-                                    title={member!.name}
-                                  >
-                                    {member!.avatar}
+                            {/* Clear split breakdown */}
+                            <div className="mt-2 px-2.5 py-2 rounded-lg bg-[#15151d] border border-white/[0.04]">
+                              <div className="flex items-center justify-between mb-1.5">
+                                <span className="text-[10px] font-semibold text-[#5a5a6e] uppercase tracking-wider">
+                                  Split equally · {splitCount} people
+                                </span>
+                                <span className="text-[10px] font-bold text-[#8b6fff]">
+                                  {formatINR(perPerson)} each
+                                </span>
+                              </div>
+                              <div className="space-y-1">
+                                {owingMembers.map((member) => (
+                                  <div key={member!.id} className="flex items-center gap-1.5">
+                                    <span className="text-[10px]">{member!.avatar}</span>
+                                    <span className="text-[10px] text-[#9898aa] font-medium">
+                                      {member!.name}
+                                    </span>
+                                    <span className="text-[10px] text-[#ff6b35] ml-auto font-semibold">
+                                      owes {formatINR(perPerson)}
+                                    </span>
                                   </div>
                                 ))}
+                                {payerInSplit && payer && (
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[10px]">{payer.avatar}</span>
+                                    <span className="text-[10px] text-[#9898aa] font-medium">
+                                      {payer.name}
+                                    </span>
+                                    <span className="text-[10px] text-[#2ce88a] ml-auto font-semibold">
+                                      self · {formatINR(perPerson)}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           </div>
 
@@ -449,6 +483,58 @@ export default function TripDetailPage() {
           )}
         </AnimatePresence>
       </main>
+
+      {/* Delete Confirmation Modal */}
+      <AnimatePresence>
+        {confirmDeleteOpen && (
+          <motion.div
+            className="fixed inset-0 z-[100] flex items-center justify-center px-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <div
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={() => !isDeleting && setConfirmDeleteOpen(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ type: "spring", stiffness: 400, damping: 30 }}
+              className="relative z-10 w-full max-w-[360px] rounded-2xl border border-white/[0.08] bg-[#18181f] p-5"
+            >
+              <div className="text-center mb-4">
+                <div className="w-14 h-14 rounded-full bg-red-500/15 flex items-center justify-center text-2xl mx-auto mb-3">
+                  🗑️
+                </div>
+                <h3 className="font-syne text-base font-bold text-white mb-1">Delete this split?</h3>
+                <p className="text-xs text-[#5a5a6e]">
+                  This will permanently delete &ldquo;{trip.name}&rdquo; and all its expenses. This cannot be undone.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <motion.button
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => setConfirmDeleteOpen(false)}
+                  disabled={isDeleting}
+                  className="flex-1 py-3 rounded-xl text-sm font-bold text-white bg-white/5 border border-white/[0.08] disabled:opacity-50"
+                >
+                  Cancel
+                </motion.button>
+                <motion.button
+                  whileTap={{ scale: 0.95 }}
+                  onClick={handleDeleteSplit}
+                  disabled={isDeleting}
+                  className="flex-1 py-3 rounded-xl text-sm font-bold text-white bg-red-500 disabled:opacity-50"
+                >
+                  {isDeleting ? "Deleting..." : "Delete"}
+                </motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Add Member Modal */}
       <AnimatePresence>

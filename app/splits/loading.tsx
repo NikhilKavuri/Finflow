@@ -1,5 +1,5 @@
 import PageLoader from "@/components/PageLoader";
 
 export default function Loading() {
-  return <PageLoader message="Loading trips..." />;
+  return <PageLoader message="Loading splits..." />;
 }

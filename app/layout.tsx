@@ -4,8 +4,8 @@ import { Providers } from "./providers";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "FinFlow – AI Expense Tracker",
-  description: "Premium AI-powered expense tracker for the Hyderabad developer lifestyle.",
+  title: "FinFlow - Expense Tracker",
+  description: "Your personalized Expense Tracker",
   manifest: "/manifest.json",
   icons: { icon: "/favicon.svg" },
 };
