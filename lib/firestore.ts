@@ -26,6 +26,7 @@ export function syncExpensesToFirestore(uid: string, state: AppState) {
         onboarded: state.onboarded,
         banks: state.banks,
         paymentMethods: state.paymentMethods,
+        monthlyBudgets: state.monthlyBudgets || {},
         updatedAt: new Date().toISOString(),
       });
     } catch (error) {
@@ -54,6 +55,7 @@ export async function loadExpensesFromFirestore(uid: string): Promise<AppState |
         onboarded: data.onboarded ?? false,
         banks: Array.isArray(data.banks) ? data.banks : [{ id: "default", name: "Default Bank" }],
         paymentMethods: Array.isArray(data.paymentMethods) ? data.paymentMethods : [],
+        monthlyBudgets: data.monthlyBudgets && typeof data.monthlyBudgets === "object" ? data.monthlyBudgets : {},
       };
     }
     return null;

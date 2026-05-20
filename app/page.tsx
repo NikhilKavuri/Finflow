@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useExpenses } from "@/hooks/useExpenses";
 import { getCategoryById } from "@/lib/categories";
-import { getCurrentMonthPrefix, getDaysInMonth, getPreviousMonthPrefix } from "@/lib/utils";
+import { getCurrentMonthPrefix, getDaysInMonth, getPreviousMonthPrefix, getTodayISO } from "@/lib/utils";
+import type { Transaction } from "@/lib/types";
 import Onboarding from "@/components/Onboarding";
 import TopNav from "@/components/TopNav";
 import BankFilter from "@/components/BankFilter";
@@ -21,6 +22,7 @@ import ExpenseDrawer from "@/components/ExpenseDrawer";
 import BudgetDrawer from "@/components/BudgetDrawer";
 import PaymentMethodsDrawer from "@/components/PaymentMethodsDrawer";
 import ViewExpensesDrawer from "@/components/ViewExpensesDrawer";
+import MonthlyBudgetPrompt from "@/components/MonthlyBudgetPrompt";
 import Toast from "@/components/Toast";
 import PageLoader, { DashboardSkeleton } from "@/components/PageLoader";
 import { List } from "lucide-react";
@@ -33,10 +35,13 @@ export default function HomePage() {
     hydrated,
     completeOnboarding,
     addTransaction,
+    editTransaction,
     deleteTransaction,
     clearAll,
     clearCategory,
     updateBudget,
+    updateMonthlyBudget,
+    getBudgetForMonth,
     addPaymentMethod,
     updatePaymentMethod,
     deletePaymentMethod,
@@ -45,10 +50,12 @@ export default function HomePage() {
   const [budgetOpen, setBudgetOpen] = useState(false);
   const [paymentMethodsOpen, setPaymentMethodsOpen] = useState(false);
   const [viewExpensesOpen, setViewExpensesOpen] = useState(false);
+  const [monthlyBudgetPromptOpen, setMonthlyBudgetPromptOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [selectedBankId, setSelectedBankId] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState("");
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const currentMonth = getCurrentMonthPrefix();
   const previousMonth = getPreviousMonthPrefix();
   const [selectedMonth, setSelectedMonth] = useState(currentMonth);
@@ -73,6 +80,22 @@ export default function HomePage() {
     }
   }, [state.banks, selectedBankId]);
 
+  // Monthly budget prompt: show on salary day if no budget set for this month
+  useEffect(() => {
+    if (!hydrated || !state.onboarded) return;
+    const today = getTodayISO();
+    const todayDay = Number(today.slice(8, 10));
+    const salaryDay = state.budgetCycleStartDay;
+
+    // Show prompt if today is on or after salary day and no monthly budget set for current month
+    if (todayDay >= salaryDay && !state.monthlyBudgets?.[currentMonth]) {
+      setMonthlyBudgetPromptOpen(true);
+    }
+  }, [hydrated, state.onboarded, state.budgetCycleStartDay, currentMonth, state.monthlyBudgets]);
+
+  // Get the effective budget for the selected month
+  const effectiveBudget = getBudgetForMonth(selectedMonth);
+
   const monthTxs = useMemo(
     () => state.transactions.filter((t) => t.date.startsWith(selectedMonth) && (selectedBankId === "all" || t.bankId === selectedBankId)),
     [state.transactions, selectedMonth, selectedBankId]
@@ -95,10 +118,16 @@ export default function HomePage() {
 
   const totalSpent = useMemo(() => expenses.reduce((s, t) => s + t.amount, 0), [expenses]);
   const totalIncome = useMemo(() => income.reduce((s, t) => s + t.amount, 0), [income]);
-  const balance = state.budget - totalSpent;
-  const pct = Math.min(100, Math.round((totalSpent / state.budget) * 100));
+  const balance = effectiveBudget - totalSpent;
+  const pct = Math.min(100, Math.round((totalSpent / effectiveBudget) * 100));
   const dayCount = isCurrentMonth ? new Date().getDate() : getDaysInMonth(selectedMonth);
   const dailyAvg = dayCount > 0 ? totalSpent / dayCount : 0;
+
+  // Handle edit: open drawer with transaction data
+  const handleEditTransaction = (tx: Transaction) => {
+    setEditingTransaction(tx);
+    setDrawerOpen(true);
+  };
 
   // Show loader while auth or data is loading
   if (loading) return <PageLoader message="Signing you in..." />;
@@ -135,7 +164,7 @@ export default function HomePage() {
               <BalanceCard
                 balance={balance}
                 totalSpent={totalSpent}
-                budget={state.budget}
+                budget={effectiveBudget}
                 pct={pct}
                 editable={isCurrentMonth}
                 onEditBudget={() => setBudgetOpen(true)}
@@ -153,7 +182,7 @@ export default function HomePage() {
             <PaymentPlanCard
               transactions={state.transactions}
               paymentMethods={state.paymentMethods || []}
-              budget={state.budget}
+              budget={effectiveBudget}
               budgetCycleStartDay={state.budgetCycleStartDay}
               selectedMonth={selectedMonth}
               onEditBudget={() => setBudgetOpen(true)}
@@ -224,6 +253,7 @@ export default function HomePage() {
                         deleteTransaction(id);
                         showToast("Expense removed");
                       }}
+                      onEdit={isCurrentMonth ? handleEditTransaction : undefined}
                       onClearAll={() => {
                         if (!isCurrentMonth || !selectedCategoryId) return;
                         clearCategory(selectedCategoryId, currentMonth);
@@ -256,11 +286,22 @@ export default function HomePage() {
               <ExpenseDrawer
                 banks={state.banks}
                 paymentMethods={state.paymentMethods || []}
-                onClose={() => setDrawerOpen(false)}
+                editingTransaction={editingTransaction}
+                onClose={() => {
+                  setDrawerOpen(false);
+                  setEditingTransaction(null);
+                }}
                 onSubmit={(data) => {
                   addTransaction(data);
                   setDrawerOpen(false);
+                  setEditingTransaction(null);
                   showToast("Expense logged");
+                }}
+                onEdit={(id, data) => {
+                  editTransaction(id, data);
+                  setDrawerOpen(false);
+                  setEditingTransaction(null);
+                  showToast("Expense updated");
                 }}
               />
             )}
@@ -269,13 +310,36 @@ export default function HomePage() {
           <AnimatePresence>
             {budgetOpen && (
               <BudgetDrawer
-                initialBudget={state.budget}
+                initialBudget={effectiveBudget}
                 initialBudgetCycleStartDay={state.budgetCycleStartDay}
                 onClose={() => setBudgetOpen(false)}
                 onSubmit={(budget, budgetCycleStartDay) => {
                   updateBudget(budget, budgetCycleStartDay);
+                  // Also update the monthly budget for the selected month
+                  updateMonthlyBudget(selectedMonth, budget);
                   setBudgetOpen(false);
                   showToast("Budget updated");
+                }}
+              />
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence>
+            {monthlyBudgetPromptOpen && (
+              <MonthlyBudgetPrompt
+                currentMonth={currentMonth}
+                previousBudget={state.budget}
+                budgetCycleStartDay={state.budgetCycleStartDay}
+                onSubmit={(budget) => {
+                  updateMonthlyBudget(currentMonth, budget);
+                  updateBudget(budget); // Also update the global budget as the new default
+                  setMonthlyBudgetPromptOpen(false);
+                  showToast("Monthly budget set! 🎉");
+                }}
+                onDismiss={() => {
+                  // Dismiss = use previous budget
+                  updateMonthlyBudget(currentMonth, state.budget);
+                  setMonthlyBudgetPromptOpen(false);
                 }}
               />
             )}
@@ -313,6 +377,10 @@ export default function HomePage() {
                   deleteTransaction(id);
                   showToast("Expense removed");
                 }}
+                onEdit={isCurrentMonth ? (tx) => {
+                  setViewExpensesOpen(false);
+                  handleEditTransaction(tx);
+                } : undefined}
                 onClearAll={() => {
                   clearAll(selectedMonth);
                   showToast("All expenses cleared");

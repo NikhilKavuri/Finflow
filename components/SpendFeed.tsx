@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Trash2 } from "lucide-react";
+import { Trash2, Pencil } from "lucide-react";
 import type { Transaction, Bank } from "@/lib/types";
 import { getCategoryById } from "@/lib/categories";
 import { formatINR, formatDate, groupByDate } from "@/lib/utils";
@@ -14,6 +14,7 @@ interface Props {
   searchable?: boolean;
   searchPlaceholder?: string;
   onDelete: (id: string) => void;
+  onEdit?: (tx: Transaction) => void;
   onClearAll: () => void;
   banks: Bank[];
 }
@@ -25,6 +26,7 @@ export default function SpendFeed({
   searchable = false,
   searchPlaceholder,
   onDelete,
+  onEdit,
   onClearAll,
   banks,
 }: Props) {
@@ -88,7 +90,7 @@ export default function SpendFeed({
                 </div>
                 <div className="flex flex-col gap-1">
                   {groups[date].map((tx, i) => (
-                    <TxItem key={tx.id} editable={editable} tx={tx} index={i} onDelete={onDelete} banks={banks} />
+                    <TxItem key={tx.id} editable={editable} tx={tx} index={i} onDelete={onDelete} onEdit={onEdit} banks={banks} />
                   ))}
                 </div>
               </div>
@@ -105,12 +107,14 @@ function TxItem({
   tx,
   index,
   onDelete,
+  onEdit,
   banks,
 }: {
   editable: boolean;
   tx: Transaction;
   index: number;
   onDelete: (id: string) => void;
+  onEdit?: (tx: Transaction) => void;
   banks: Bank[];
 }) {
   const cat = getCategoryById(tx.category);
@@ -145,15 +149,28 @@ function TxItem({
         {tx.type === "income" ? "+" : "-"}{formatINR(tx.amount)}
       </div>
       {editable && (
-        <motion.button
-          whileTap={{ scale: 0.85 }}
-          onClick={() => onDelete(tx.id)}
-          className="opacity-0 group-hover:opacity-100 transition-opacity ml-1 w-7 h-7 rounded-lg flex items-center justify-center text-[#ff4f6b]"
-          style={{ background: "rgba(255,79,107,0.1)" }}
-          aria-label="Delete"
-        >
-          <Trash2 size={13} />
-        </motion.button>
+        <div className="flex items-center gap-1 ml-1">
+          {onEdit && (
+            <motion.button
+              whileTap={{ scale: 0.85 }}
+              onClick={() => onEdit(tx)}
+              className="opacity-60 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity w-7 h-7 rounded-lg flex items-center justify-center text-[#8b6fff]"
+              style={{ background: "rgba(108,71,255,0.1)" }}
+              aria-label="Edit"
+            >
+              <Pencil size={13} />
+            </motion.button>
+          )}
+          <motion.button
+            whileTap={{ scale: 0.85 }}
+            onClick={() => onDelete(tx.id)}
+            className="opacity-60 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity w-7 h-7 rounded-lg flex items-center justify-center text-[#ff4f6b]"
+            style={{ background: "rgba(255,79,107,0.1)" }}
+            aria-label="Delete"
+          >
+            <Trash2 size={13} />
+          </motion.button>
+        </div>
       )}
     </motion.div>
   );

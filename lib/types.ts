@@ -26,6 +26,8 @@ export interface AppState {
   onboarded: boolean;
   banks: Bank[];
   paymentMethods: PaymentMethodConfig[];
+  /** Per-month budgets keyed by month prefix e.g. "2026-05" → 80000 */
+  monthlyBudgets?: Record<string, number>;
 }
 
 // ── Payment Method Config ───────────────────────────────────
@@ -41,15 +43,15 @@ export interface PaymentMethodConfig {
   paymentDueDay?: number;
 }
 
-// ── Trip / Splitwise Types ──────────────────────────────────
+// ── Split / Splitwise Types ──────────────────────────────────
 
-export interface TripMember {
+export interface SplitMember {
   id: string;
   name: string;
   avatar: string; // emoji avatar
 }
 
-export interface TripExpense {
+export interface SplitExpense {
   id: string;
   description: string;
   amount: number;
@@ -59,22 +61,30 @@ export interface TripExpense {
   category?: string;
 }
 
-export interface TripSettlement {
+export interface SplitSettlement {
   id: string;
   from: string;   // member id who pays
   to: string;     // member id who receives
   amount: number;
   settled: boolean;
   date: string;
+  isPartialPayment?: boolean; // true if this is a partial payment
 }
 
-export interface TripSession {
+
+export interface SplitSession {
   id: string;
   name: string;
   emoji: string;
-  members: TripMember[];
-  expenses: TripExpense[];
-  settlements: TripSettlement[];
+  members: SplitMember[];
+  expenses: SplitExpense[];
+  settlements: SplitSettlement[];
   createdAt: string;
   archived: boolean;
 }
+
+// Legacy aliases for backwards compatibility
+export type TripMember = SplitMember;
+export type TripExpense = SplitExpense;
+export type TripSettlement = SplitSettlement;
+export type TripSession = SplitSession;

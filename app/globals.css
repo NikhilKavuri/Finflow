@@ -131,7 +131,7 @@ input[type="number"] { -moz-appearance: textfield; }
     padding-bottom: max(env(safe-area-inset-bottom), 0px);
   }
   .keyboard-panel {
-    height: min(88svh, calc(var(--visual-viewport-height, 100svh) - 12px));
+    max-height: min(88svh, calc(var(--visual-viewport-height, 100svh) - 12px));
   }
 }
 

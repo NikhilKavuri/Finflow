@@ -23,6 +23,7 @@ const DEFAULT_STATE: AppState = {
   onboarded: false,
   banks: [{ id: "default", name: "Default Bank", balance: 0, initialBalance: 0 }],
   paymentMethods: DEFAULT_PAYMENT_METHODS,
+  monthlyBudgets: {},
 };
 
 function normalizeDay(value: unknown, fallback: number): number {
@@ -44,8 +45,44 @@ function normalizePaymentMethods(methods: unknown): PaymentMethodConfig[] {
   }));
 }
 
-function getBankBalanceDelta(tx: Pick<Transaction, "amount" | "type" | "paymentMethod">): number {
-  if (tx.type === "expense" && tx.paymentMethod === "credit_card") return 0;
+/**
+ * Check if a credit card transaction falls in the "reserved" period:
+ * After the billing cycle ends but before the pay date.
+ * Reserved transactions are deducted from bank immediately.
+ */
+function isReservedPeriodCardTx(
+  tx: Pick<Transaction, "date" | "paymentMethod" | "paymentMethodId">,
+  paymentMethods: PaymentMethodConfig[]
+): boolean {
+  if (tx.paymentMethod !== "credit_card") return false;
+  const card = paymentMethods.find((pm) => pm.id === tx.paymentMethodId)
+    || paymentMethods.find((pm) => pm.type === "credit_card");
+  if (!card) return false;
+
+  const cycleEnd = card.billingCycleStart ?? 15; // cycle ends on this day (next cycle starts)
+  const payDay = card.paymentDueDay ?? 5;
+  const txDay = Number(tx.date.slice(8, 10));
+
+  // Reserved period: after cycle end day, up to pay day
+  // e.g. cycle ends 15th, pay day 3rd → reserved is 16th-31st of current month + 1st-3rd of next
+  if (payDay < cycleEnd) {
+    // Pay day is in the next month relative to cycle end (e.g., cycle end 15th, pay 3rd)
+    return txDay > cycleEnd || txDay <= payDay;
+  } else {
+    // Pay day is same month as cycle end (e.g., cycle end 5th, pay 20th)
+    return txDay > cycleEnd && txDay <= payDay;
+  }
+}
+
+function getBankBalanceDelta(
+  tx: Pick<Transaction, "amount" | "type" | "paymentMethod" | "paymentMethodId" | "date">,
+  paymentMethods: PaymentMethodConfig[]
+): number {
+  if (tx.type === "expense" && tx.paymentMethod === "credit_card") {
+    // Reserved period card transactions DO deduct from bank
+    if (isReservedPeriodCardTx(tx, paymentMethods)) return -tx.amount;
+    return 0; // Normal billing cycle card transactions don't affect bank
+  }
   return tx.type === "expense" ? -tx.amount : tx.amount;
 }
 
@@ -71,6 +108,7 @@ function loadState(): AppState {
           }))
         : DEFAULT_STATE.banks,
       paymentMethods: normalizePaymentMethods(parsed.paymentMethods),
+      monthlyBudgets: parsed.monthlyBudgets && typeof parsed.monthlyBudgets === "object" ? parsed.monthlyBudgets : {},
     };
   } catch {
     return DEFAULT_STATE;
@@ -189,7 +227,7 @@ export function useExpenses() {
         const updatedBanks = prev.banks.map((bank) => {
           if (bank.id === newTx.bankId) {
             const currentBalance = bank.balance ?? 0;
-            const newBalance = currentBalance + getBankBalanceDelta(newTx);
+            const newBalance = currentBalance + getBankBalanceDelta(newTx, prev.paymentMethods);
             return { ...bank, balance: newBalance };
           }
           return bank;
@@ -217,7 +255,7 @@ export function useExpenses() {
           updatedBanks = prev.banks.map((bank) => {
             if (bank.id === tx.bankId) {
               const currentBalance = bank.balance ?? 0;
-              const newBalance = currentBalance - getBankBalanceDelta(tx);
+              const newBalance = currentBalance - getBankBalanceDelta(tx, prev.paymentMethods);
               return { ...bank, balance: newBalance };
             }
             return bank;
@@ -246,7 +284,7 @@ export function useExpenses() {
         updatedBanks = updatedBanks.map((bank) => {
           if (bank.id === tx.bankId) {
             const currentBalance = bank.balance ?? 0;
-            const newBalance = currentBalance - getBankBalanceDelta(tx);
+            const newBalance = currentBalance - getBankBalanceDelta(tx, prev.paymentMethods);
             return { ...bank, balance: newBalance };
           }
           return bank;
@@ -276,7 +314,7 @@ export function useExpenses() {
           updatedBanks = updatedBanks.map((bank) => {
             if (bank.id === tx.bankId) {
               const currentBalance = bank.balance ?? 0;
-              const newBalance = currentBalance - getBankBalanceDelta(tx);
+              const newBalance = currentBalance - getBankBalanceDelta(tx, prev.paymentMethods);
               return { ...bank, balance: newBalance };
             }
             return bank;
@@ -306,6 +344,64 @@ export function useExpenses() {
       }));
     },
     [updateState]
+  );
+
+  const editTransaction = useCallback(
+    (id: string, updates: Partial<Omit<Transaction, "id">>) => {
+      updateState((prev) => {
+        const oldTx = prev.transactions.find((t) => t.id === id);
+        if (!oldTx) return prev;
+
+        const newTx: Transaction = { ...oldTx, ...updates };
+
+        // Reverse old bank delta, apply new one
+        let updatedBanks = prev.banks.map((bank) => {
+          if (bank.id === oldTx.bankId) {
+            const balance = (bank.balance ?? 0) - getBankBalanceDelta(oldTx, prev.paymentMethods);
+            return { ...bank, balance };
+          }
+          return bank;
+        });
+        updatedBanks = updatedBanks.map((bank) => {
+          if (bank.id === newTx.bankId) {
+            const balance = (bank.balance ?? 0) + getBankBalanceDelta(newTx, prev.paymentMethods);
+            return { ...bank, balance };
+          }
+          return bank;
+        });
+
+        return {
+          ...prev,
+          transactions: prev.transactions.map((t) => (t.id === id ? newTx : t)),
+          banks: updatedBanks,
+        };
+      });
+    },
+    [updateState]
+  );
+
+  const updateMonthlyBudget = useCallback(
+    (monthPrefix: string, amount: number) => {
+      updateState((prev) => ({
+        ...prev,
+        monthlyBudgets: {
+          ...(prev.monthlyBudgets || {}),
+          [monthPrefix]: amount,
+        },
+      }));
+    },
+    [updateState]
+  );
+
+  const getBudgetForMonth = useCallback(
+    (monthPrefix: string): number => {
+      // Check per-month budget first
+      const monthly = state.monthlyBudgets?.[monthPrefix];
+      if (monthly !== undefined) return monthly;
+      // Fallback to global budget
+      return state.budget;
+    },
+    [state.monthlyBudgets, state.budget]
   );
 
   const addBank = useCallback(
@@ -400,10 +496,13 @@ export function useExpenses() {
     hydrated,
     completeOnboarding,
     addTransaction,
+    editTransaction,
     deleteTransaction,
     clearAll,
     clearCategory,
     updateBudget,
+    updateMonthlyBudget,
+    getBudgetForMonth,
     addBank,
     updateBank,
     deleteBank,

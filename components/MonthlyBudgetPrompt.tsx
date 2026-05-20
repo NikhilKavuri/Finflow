@@ -1,26 +1,39 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
-import { X } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { CalendarDays, X } from "lucide-react";
 import { formatINR } from "@/lib/utils";
 
-const PRESETS = [40000, 80000, 120000, 200000];
+const PRESETS = [40000, 60000, 80000, 100000, 120000, 150000];
 
 interface Props {
-  initialBudget: number;
-  initialBudgetCycleStartDay: number;
-  onClose: () => void;
-  onSubmit: (budget: number, budgetCycleStartDay: number) => void;
+  currentMonth: string;
+  previousBudget: number;
+  budgetCycleStartDay: number;
+  onSubmit: (budget: number) => void;
+  onDismiss: () => void;
 }
 
-export default function BudgetDrawer({ initialBudget, initialBudgetCycleStartDay, onClose, onSubmit }: Props) {
-  const [budget, setBudget] = useState(String(initialBudget));
-  const [budgetCycleStartDay, setBudgetCycleStartDay] = useState(String(initialBudgetCycleStartDay));
-  const [error, setError] = useState("");
+function formatMonthName(monthPrefix: string): string {
+  const [year, month] = monthPrefix.split("-").map(Number);
+  return new Date(year, month - 1, 1).toLocaleDateString("en-IN", {
+    month: "long",
+    year: "numeric",
+  });
+}
+
+export default function MonthlyBudgetPrompt({
+  currentMonth,
+  previousBudget,
+  budgetCycleStartDay,
+  onSubmit,
+  onDismiss,
+}: Props) {
+  const [budget, setBudget] = useState(String(previousBudget));
   const numericBudget = Number(budget);
-  const numericBudgetCycleStartDay = Number(budgetCycleStartDay);
   const previewBudget = Number.isFinite(numericBudget) && numericBudget > 0 ? numericBudget : 0;
+  const [error, setError] = useState("");
 
   useEffect(() => {
     const root = document.documentElement;
@@ -51,32 +64,25 @@ export default function BudgetDrawer({ initialBudget, initialBudgetCycleStartDay
 
   const handleSave = () => {
     if (!Number.isFinite(numericBudget) || numericBudget < 1000) {
-      setError("Enter a budget of at least 1000.");
+      setError("Enter a budget of at least ₹1,000.");
       return;
     }
-    if (
-      !Number.isFinite(numericBudgetCycleStartDay) ||
-      numericBudgetCycleStartDay < 1 ||
-      numericBudgetCycleStartDay > 28
-    ) {
-      setError("Enter a salary day between 1 and 28.");
-      return;
-    }
-
-    onSubmit(Math.round(numericBudget), Math.round(numericBudgetCycleStartDay));
+    onSubmit(Math.round(numericBudget));
   };
 
   return (
     <>
+      {/* Overlay */}
       <motion.div
         className="fixed inset-0 z-40 bg-black/60"
         style={{ backdropFilter: "blur(4px)" }}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        onClick={onClose}
+        onClick={onDismiss}
       />
 
+      {/* Drawer */}
       <motion.div
         className="keyboard-panel fixed left-1/2 z-50 flex w-full max-w-[480px] flex-col overflow-hidden rounded-t-3xl border border-b-0 border-white/10 bg-[#18181f]"
         style={{ x: "-50%", bottom: "var(--keyboard-offset, 0)" }}
@@ -85,24 +91,41 @@ export default function BudgetDrawer({ initialBudget, initialBudgetCycleStartDay
         exit={{ y: "100%" }}
         transition={{ type: "spring", stiffness: 340, damping: 38 }}
       >
+        {/* Handle */}
         <div className="flex justify-center pt-3 pb-1">
           <div className="h-1 w-10 rounded-full bg-white/20" />
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-[max(2rem,env(safe-area-inset-bottom))] pt-2">
-          <div className="mb-5 flex items-center justify-between">
+          {/* Header */}
+          <div className="mb-4 flex items-center justify-between">
             <div>
-              <h2 className="font-syne text-lg font-bold text-white">Monthly Budget</h2>
-              <p className="text-xs font-semibold text-[#5a5a6e]">Adjust your current spending limit</p>
+              <h2 className="font-syne text-lg font-bold text-white">New Budget Cycle! 🎉</h2>
+              <p className="text-xs font-semibold text-[#5a5a6e] mt-0.5">
+                Set your budget for {formatMonthName(currentMonth)}
+              </p>
             </div>
             <motion.button
               whileTap={{ scale: 0.88 }}
-              onClick={onClose}
+              onClick={onDismiss}
               className="flex h-8 w-8 items-center justify-center rounded-full bg-white/5 text-[#9898aa]"
-              aria-label="Close"
+              aria-label="Dismiss"
             >
               <X size={16} />
             </motion.button>
+          </div>
+
+          {/* Salary day info */}
+          <div className="mb-4 rounded-xl border border-[#b8ff57]/20 bg-[#b8ff57]/5 px-3 py-2.5 flex items-center gap-2.5">
+            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-[#b8ff57]/15 text-[#b8ff57]">
+              <CalendarDays size={17} />
+            </div>
+            <div>
+              <div className="text-xs font-bold text-[#b8ff57]">Salary Day {budgetCycleStartDay}</div>
+              <div className="text-[10px] text-[#5a5a6e] mt-0.5">
+                Last month's budget: {formatINR(previousBudget)}
+              </div>
+            </div>
           </div>
 
           {error && (
@@ -111,13 +134,15 @@ export default function BudgetDrawer({ initialBudget, initialBudgetCycleStartDay
             </div>
           )}
 
-          <div className="mb-5 rounded-2xl border border-white/[0.06] bg-[#1e1e28] p-4">
+          {/* Preview */}
+          <div className="mb-4 rounded-2xl border border-white/[0.06] bg-[#1e1e28] p-4">
             <div className="mb-1 text-[11px] font-semibold uppercase tracking-widest text-[#5a5a6e]">
-              New Budget
+              This Month's Budget
             </div>
             <div className="font-syne text-4xl font-black text-white">{formatINR(previewBudget)}</div>
           </div>
 
+          {/* Amount input */}
           <label className="mb-2 block text-[11px] font-semibold uppercase tracking-widest text-[#5a5a6e]">
             Amount
           </label>
@@ -135,20 +160,8 @@ export default function BudgetDrawer({ initialBudget, initialBudgetCycleStartDay
             placeholder="Enter monthly budget"
           />
 
-          <input
-            type="range"
-            min={10000}
-            max={300000}
-            step={5000}
-            value={Math.min(300000, Math.max(10000, previewBudget || 10000))}
-            onChange={(e) => {
-              setBudget(e.target.value);
-              setError("");
-            }}
-            className="mb-4 w-full"
-          />
-
-          <div className="mb-7 flex flex-wrap gap-2">
+          {/* Presets */}
+          <div className="mb-6 flex flex-wrap gap-2">
             {PRESETS.map((preset) => (
               <button
                 key={preset}
@@ -168,47 +181,7 @@ export default function BudgetDrawer({ initialBudget, initialBudgetCycleStartDay
             ))}
           </div>
 
-          <label className="mb-2 block text-[11px] font-semibold uppercase tracking-widest text-[#5a5a6e]">
-            Salary / Budget Start Day
-          </label>
-          <div className="mb-7 rounded-2xl border border-white/[0.06] bg-[#1e1e28] p-4">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="text-sm font-bold text-white">
-                  Day {Number.isFinite(numericBudgetCycleStartDay) ? numericBudgetCycleStartDay : initialBudgetCycleStartDay}
-                </div>
-                <div className="text-[11px] leading-relaxed text-[#5a5a6e]">
-                  Your budget window runs from this day to the day before it next month.
-                </div>
-              </div>
-              <input
-                type="number"
-                inputMode="numeric"
-                min={1}
-                max={28}
-                value={budgetCycleStartDay}
-                onChange={(e) => {
-                  setBudgetCycleStartDay(e.target.value);
-                  setError("");
-                }}
-                className="h-11 w-20 rounded-xl border border-white/10 bg-[#252533] px-3 text-center text-base font-bold text-white outline-none transition-colors focus:border-[#8b6fff]"
-                aria-label="Budget start day"
-              />
-            </div>
-            <input
-              type="range"
-              min={1}
-              max={28}
-              step={1}
-              value={Math.min(28, Math.max(1, Number.isFinite(numericBudgetCycleStartDay) ? numericBudgetCycleStartDay : initialBudgetCycleStartDay))}
-              onChange={(e) => {
-                setBudgetCycleStartDay(e.target.value);
-                setError("");
-              }}
-              className="w-full"
-            />
-          </div>
-
+          {/* Save button */}
           <motion.button
             whileTap={{ scale: 0.97 }}
             whileHover={{ translateY: -1 }}
@@ -216,7 +189,16 @@ export default function BudgetDrawer({ initialBudget, initialBudgetCycleStartDay
             className="w-full rounded-2xl py-4 font-syne text-base font-bold text-white glow-accent"
             style={{ background: "linear-gradient(135deg,#6c47ff,#8b6fff)" }}
           >
-            Save Budget
+            Set Budget ✦
+          </motion.button>
+
+          {/* Use same */}
+          <motion.button
+            whileTap={{ scale: 0.97 }}
+            onClick={() => onSubmit(previousBudget)}
+            className="mt-3 w-full rounded-2xl py-3 text-sm font-semibold text-[#5a5a6e] border border-white/[0.06] bg-[#1e1e28] hover:text-white transition-colors"
+          >
+            Use same as last month ({formatINR(previousBudget)})
           </motion.button>
         </div>
       </motion.div>

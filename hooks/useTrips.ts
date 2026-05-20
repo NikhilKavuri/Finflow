@@ -176,7 +176,7 @@ export function useTrips() {
   const createTrip = useCallback(
     (name: string, emoji: string, members: Omit<TripMember, "id">[]) => {
       const trip: TripSession = {
-        id: `trip_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        id: `split_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
         name,
         emoji,
         members: members.map((m, i) => ({
@@ -262,13 +262,23 @@ export function useTrips() {
 
   const settleDebt = useCallback(
     (tripId: string, from: string, to: string, amount: number) => {
+      const trip = trips.find((t) => t.id === tripId);
+      if (!trip) return;
+
+      // Check if this is a partial payment
+      const currentBalance = calculateBalances(trip).find(
+        (b) => b.from.id === from && b.to.id === to
+      );
+      const isPartialPayment = currentBalance && amount < currentBalance.amount;
+
       const settlement: TripSettlement = {
         id: `stl_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
         from,
         to,
         amount,
-        settled: true,
+        settled: !isPartialPayment,
         date: getTodayISO(),
+        isPartialPayment,
       };
       updateTrips((prev) =>
         prev.map((t) =>
@@ -278,7 +288,7 @@ export function useTrips() {
         )
       );
     },
-    [updateTrips]
+    [updateTrips, trips]
   );
 
   const archiveTrip = useCallback(
@@ -313,17 +323,73 @@ export function useTrips() {
     [trips]
   );
 
+  const updateTrip = useCallback(
+    (tripId: string, updates: { name?: string; emoji?: string }) => {
+      updateTrips((prev) =>
+        prev.map((t) =>
+          t.id === tripId
+            ? {
+                ...t,
+                name: updates.name ?? t.name,
+                emoji: updates.emoji ?? t.emoji,
+              }
+            : t
+        )
+      );
+    },
+    [updateTrips]
+  );
+
+  const updateTripExpense = useCallback(
+    (tripId: string, expenseId: string, updates: Partial<Omit<TripExpense, "id">>) => {
+      updateTrips((prev) =>
+        prev.map((t) =>
+          t.id === tripId
+            ? {
+                ...t,
+                expenses: t.expenses.map((e) =>
+                  e.id === expenseId ? { ...e, ...updates } : e
+                ),
+              }
+            : t
+        )
+      );
+    },
+    [updateTrips]
+  );
+
+  const updateMember = useCallback(
+    (tripId: string, memberId: string, updates: Partial<Omit<TripMember, "id">>) => {
+      updateTrips((prev) =>
+        prev.map((t) =>
+          t.id === tripId
+            ? {
+                ...t,
+                members: t.members.map((m) =>
+                  m.id === memberId ? { ...m, ...updates } : m
+                ),
+              }
+            : t
+        )
+      );
+    },
+    [updateTrips]
+  );
+
   return {
     trips,
     hydrated,
     createTrip,
     addTripExpense,
     deleteTripExpense,
+    updateTripExpense,
     addMember,
     removeMember,
+    updateMember,
     settleDebt,
     archiveTrip,
     deleteTrip,
     getTrip,
+    updateTrip,
   };
 }

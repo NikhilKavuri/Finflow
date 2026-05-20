@@ -21,6 +21,8 @@ export interface PaymentPlan {
   directSpend: number;
   cardDueTotal: number;
   cardFutureTotal: number;
+  /** Card expenses in the reserved period (after cycle end, before pay date) */
+  reservedCardSpend: number;
   totalPlannedSpend: number;
   income: number;
   budgetLeft: number;
@@ -83,6 +85,25 @@ function belongsToMethod(
   if (tx.paymentMethod !== method.type) return false;
   if (method.type !== "credit_card") return true;
   return creditCards[0]?.id === method.id;
+}
+
+/**
+ * Check if a transaction date is in the reserved period for a given card:
+ * After the billing cycle end day, before the pay day.
+ * Reserved expenses are committed but not yet billed — they're deducted from bank.
+ */
+export function isInReservedPeriod(txDate: string, card: PaymentMethodConfig): boolean {
+  const cycleEnd = card.billingCycleStart ?? 15;
+  const payDay = card.paymentDueDay ?? 5;
+  const txDay = Number(txDate.slice(8, 10));
+
+  if (payDay < cycleEnd) {
+    // Pay day is in the next month relative to cycle end (e.g., cycle end 15th, pay 3rd)
+    return txDay > cycleEnd || txDay <= payDay;
+  } else {
+    // Pay day is same month as cycle end (e.g., cycle end 5th, pay 20th)
+    return txDay > cycleEnd && txDay <= payDay;
+  }
 }
 
 export function getBudgetWindowForMonth(monthPrefix: string, budgetCycleStartDay: number): BudgetWindow {
@@ -165,6 +186,18 @@ export function getPaymentPlan({
     }
   }
 
+  // Calculate reserved card spend: credit card expenses in the budget window
+  // that fall in the reserved period (after cycle end, before pay date)
+  const reservedCardSpend = transactions
+    .filter((tx) => {
+      if (tx.type !== "expense" || !isInRange(tx.date, window.start, window.end)) return false;
+      if (!isCreditCardTransaction(tx, paymentMethods)) return false;
+      const card = creditCards.find((method) => belongsToMethod(tx, method, creditCards));
+      if (!card) return false;
+      return isInReservedPeriod(tx.date, card);
+    })
+    .reduce((sum, tx) => sum + tx.amount, 0);
+
   const cardDueTotal = cardBills.reduce((sum, bill) => sum + bill.amount, 0);
   const cardFutureTotal = transactions
     .filter((tx) => {
@@ -172,20 +205,27 @@ export function getPaymentPlan({
       if (!isCreditCardTransaction(tx, paymentMethods)) return false;
 
       const card = creditCards.find((method) => belongsToMethod(tx, method, creditCards));
-      return !cardBills.some(
+      // Exclude if it's in a known card bill cycle
+      const inBill = cardBills.some(
         (bill) =>
           bill.paymentMethodId === card?.id &&
           isInRange(tx.date, bill.cycleStart, bill.cycleEnd)
       );
+      if (inBill) return false;
+      // Exclude if it's in the reserved period (already counted separately)
+      if (card && isInReservedPeriod(tx.date, card)) return false;
+      return true;
     })
     .reduce((sum, tx) => sum + tx.amount, 0);
-  const totalPlannedSpend = directSpend + cardDueTotal + cardFutureTotal;
+
+  const totalPlannedSpend = directSpend + cardDueTotal + cardFutureTotal + reservedCardSpend;
 
   return {
     window,
     directSpend,
     cardDueTotal,
     cardFutureTotal,
+    reservedCardSpend,
     totalPlannedSpend,
     income,
     budgetLeft: budget - totalPlannedSpend,

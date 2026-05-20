@@ -7,24 +7,33 @@ import { CATEGORIES, type Category } from "@/lib/categories";
 import { classifyExpense } from "@/lib/classifier";
 import type { Transaction, Bank, PaymentMethodConfig } from "@/lib/types";
 import { formatDate, formatMonthLabel, getCurrentMonthPrefix, getTodayISO } from "@/lib/utils";
+import InlineCalculator from "./InlineCalculator";
 
 interface Props {
   onClose: () => void;
   onSubmit: (data: Omit<Transaction, "id">) => void;
+  onEdit?: (id: string, data: Partial<Omit<Transaction, "id">>) => void;
   banks: Bank[];
   paymentMethods: PaymentMethodConfig[];
+  editingTransaction?: Transaction | null;
 }
 
 type TxType = "expense" | "income";
 
-export default function ExpenseDrawer({ onClose, onSubmit, banks, paymentMethods }: Props) {
-  const [name, setName] = useState("");
-  const [amount, setAmount] = useState("");
-  const [date, setDate] = useState(getTodayISO());
-  const [selectedCat, setSelectedCat] = useState<string | null>(null);
-  const [txType, setTxType] = useState<TxType>("expense");
-  const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState<string>(paymentMethods[0]?.id || "");
-  const [selectedBankId, setSelectedBankId] = useState<string>(banks[0]?.id || "default");
+export default function ExpenseDrawer({ onClose, onSubmit, onEdit, banks, paymentMethods, editingTransaction }: Props) {
+  const isEditing = !!editingTransaction;
+
+  const [name, setName] = useState(editingTransaction?.name || "");
+  const [amount, setAmount] = useState(editingTransaction ? String(editingTransaction.amount) : "");
+  const [date, setDate] = useState(editingTransaction?.date || getTodayISO());
+  const [selectedCat, setSelectedCat] = useState<string | null>(editingTransaction?.category || null);
+  const [txType, setTxType] = useState<TxType>(editingTransaction?.type || "expense");
+  const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState<string>(
+    editingTransaction?.paymentMethodId || paymentMethods[0]?.id || ""
+  );
+  const [selectedBankId, setSelectedBankId] = useState<string>(
+    editingTransaction?.bankId || banks[0]?.id || "default"
+  );
   const [bankDropdownOpen, setBankDropdownOpen] = useState(false);
   const bankDropdownRef = useRef<HTMLDivElement>(null);
   const [aiSuggest, setAiSuggest] = useState<Category | null>(null);
@@ -38,13 +47,48 @@ export default function ExpenseDrawer({ onClose, onSubmit, banks, paymentMethods
   const selectedBank = banks.find((b) => b.id === selectedBankId) ?? banks[0];
   const selectedPaymentMethod = paymentMethods.find((p) => p.id === selectedPaymentMethodId);
 
+  // Get card billing info for the selected date
+  const getCardStatusMessage = () => {
+    if (selectedPaymentMethod?.type !== "credit_card") return null;
+    const card = selectedPaymentMethod;
+    const cycleStart = card.billingCycleStart ?? 15;
+    const payDay = card.paymentDueDay ?? 5;
+    const txDay = selectedDay;
+
+    // Check if in reserved period
+    let isReserved = false;
+    if (payDay < cycleStart) {
+      isReserved = txDay > cycleStart || txDay <= payDay;
+    } else {
+      isReserved = txDay > cycleStart && txDay <= payDay;
+    }
+
+    if (isReserved) {
+      return {
+        type: "reserved" as const,
+        message: `Reserved — after billing cycle (day ${cycleStart}), before pay date (day ${payDay}). This will be deducted from your bank.`,
+        color: "#ff6b35",
+      };
+    }
+
+    return {
+      type: "bill" as const,
+      message: `Card bill — within billing cycle (starting day ${cycleStart}). Will appear on your card statement, due on day ${payDay}.`,
+      color: "#ffb830",
+    };
+  };
+
+  const cardStatus = getCardStatusMessage();
+
   useEffect(() => {
     const root = document.documentElement;
     const previousOverflow = document.body.style.overflow;
 
     const syncViewportHeight = () => {
-      const height = window.visualViewport?.height ?? window.innerHeight;
-      root.style.setProperty("--visual-viewport-height", `${height}px`);
+      const vh = window.visualViewport?.height ?? window.innerHeight;
+      const offset = window.innerHeight - (window.visualViewport?.height ?? window.innerHeight);
+      root.style.setProperty("--visual-viewport-height", `${vh}px`);
+      root.style.setProperty("--keyboard-offset", `${Math.max(0, offset)}px`);
     };
 
     syncViewportHeight();
@@ -56,6 +100,7 @@ export default function ExpenseDrawer({ onClose, onSubmit, banks, paymentMethods
     return () => {
       document.body.style.overflow = previousOverflow;
       root.style.removeProperty("--visual-viewport-height");
+      root.style.removeProperty("--keyboard-offset");
       window.visualViewport?.removeEventListener("resize", syncViewportHeight);
       window.visualViewport?.removeEventListener("scroll", syncViewportHeight);
       window.removeEventListener("resize", syncViewportHeight);
@@ -100,7 +145,8 @@ export default function ExpenseDrawer({ onClose, onSubmit, banks, paymentMethods
     if (!date.startsWith(currentMonth)) { setError("Only the current month can be edited."); return; }
     const cat = selectedCat ?? aiSuggest?.id ?? "other";
     const pm = paymentMethods.find((p) => p.id === selectedPaymentMethodId);
-    onSubmit({
+
+    const txData = {
       name: name.trim(),
       amount: amt,
       category: cat,
@@ -109,7 +155,13 @@ export default function ExpenseDrawer({ onClose, onSubmit, banks, paymentMethods
       bankId: selectedBankId,
       paymentMethod: pm?.type || "other",
       paymentMethodId: pm?.id,
-    });
+    };
+
+    if (isEditing && editingTransaction && onEdit) {
+      onEdit(editingTransaction.id, txData);
+    } else {
+      onSubmit(txData);
+    }
   };
 
   return (
@@ -126,8 +178,8 @@ export default function ExpenseDrawer({ onClose, onSubmit, banks, paymentMethods
 
       {/* Drawer */}
       <motion.div
-        className="keyboard-panel fixed bottom-0 left-1/2 z-50 flex w-full max-w-[480px] flex-col overflow-hidden rounded-t-3xl border border-b-0 border-white/10 bg-[#18181f]"
-        style={{ x: "-50%" }}
+        className="keyboard-panel fixed left-1/2 z-50 flex w-full max-w-[480px] flex-col overflow-hidden rounded-t-3xl border border-b-0 border-white/10 bg-[#18181f]"
+        style={{ x: "-50%", bottom: "var(--keyboard-offset, 0)" }}
         initial={{ y: "100%" }}
         animate={{ y: 0 }}
         exit={{ y: "100%" }}
@@ -140,7 +192,9 @@ export default function ExpenseDrawer({ onClose, onSubmit, banks, paymentMethods
 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-[max(2rem,env(safe-area-inset-bottom))] pt-2">
           <div className="flex items-center justify-between mb-5">
-            <h2 className="font-syne text-lg font-bold text-white">Log Expense</h2>
+            <h2 className="font-syne text-lg font-bold text-white">
+              {isEditing ? "Edit Expense" : "Log Expense"}
+            </h2>
             <motion.button whileTap={{ scale: 0.88 }} onClick={onClose}
               className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-[#9898aa]">
               <X size={16} />
@@ -257,6 +311,14 @@ export default function ExpenseDrawer({ onClose, onSubmit, banks, paymentMethods
               value={amount}
               onChange={(e) => { setAmount(e.target.value); setError(""); }}
             />
+            {/* Inline Calculator */}
+            <InlineCalculator
+              currentValue={amount}
+              onResult={(val) => {
+                setAmount(String(val));
+                setError("");
+              }}
+            />
           </div>
 
           {/* Type */}
@@ -287,13 +349,28 @@ export default function ExpenseDrawer({ onClose, onSubmit, banks, paymentMethods
                 </button>
               ))}
             </div>
-            {selectedPaymentMethod?.type === "credit_card" && (
-              <div className="mt-2 rounded-xl border border-[#ffb830]/20 bg-[#ffb830]/10 px-3 py-2">
-                <div className="text-[11px] font-semibold text-[#ffb830]">
-                  Card cycle starts on day {selectedPaymentMethod.billingCycleStart ?? 15}; pay on day {selectedPaymentMethod.paymentDueDay ?? 5}.
+            {/* Card status banner */}
+            {cardStatus && (
+              <div
+                className="mt-2 rounded-xl px-3 py-2 border"
+                style={{
+                  borderColor: `${cardStatus.color}33`,
+                  background: `${cardStatus.color}15`,
+                }}
+              >
+                <div className="flex items-center gap-1.5 mb-0.5">
+                  <span className="text-xs">
+                    {cardStatus.type === "reserved" ? "🔒" : "💳"}
+                  </span>
+                  <span
+                    className="text-[11px] font-semibold"
+                    style={{ color: cardStatus.color }}
+                  >
+                    {cardStatus.type === "reserved" ? "Reserved from Bank" : "Card Bill"}
+                  </span>
                 </div>
-                <div className="mt-0.5 text-[10px] leading-relaxed text-[#9898aa]">
-                  This will not reduce bank balance today. It is planned when the card bill is due.
+                <div className="text-[10px] leading-relaxed text-[#9898aa]">
+                  {cardStatus.message}
                 </div>
               </div>
             )}
@@ -407,7 +484,7 @@ export default function ExpenseDrawer({ onClose, onSubmit, banks, paymentMethods
             className="w-full py-4 rounded-2xl font-syne text-base font-bold text-white glow-accent transition-all"
             style={{ background: "linear-gradient(135deg, #6c47ff, #8b6fff)" }}
           >
-            Add to Feed ✦
+            {isEditing ? "Save Changes ✦" : "Add to Feed ✦"}
           </motion.button>
         </div>
       </motion.div>

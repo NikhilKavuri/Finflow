@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Search, Trash2 } from "lucide-react";
+import { X, Search, Trash2, Pencil } from "lucide-react";
 import type { Transaction, Bank } from "@/lib/types";
 import { getCategoryById, CATEGORIES } from "@/lib/categories";
 import { formatINR, formatDate, groupByDate } from "@/lib/utils";
@@ -13,6 +13,7 @@ interface Props {
   editable?: boolean;
   onClose: () => void;
   onDelete: (id: string) => void;
+  onEdit?: (tx: Transaction) => void;
   onClearAll: () => void;
 }
 
@@ -22,6 +23,7 @@ export default function ViewExpensesDrawer({
   editable = true,
   onClose,
   onDelete,
+  onEdit,
   onClearAll,
 }: Props) {
   const [query, setQuery] = useState("");
@@ -194,14 +196,28 @@ export default function ViewExpensesDrawer({
                               {tx.type === "income" ? "+" : "-"}{formatINR(tx.amount)}
                             </div>
                             {editable && (
-                              <motion.button
-                                whileTap={{ scale: 0.85 }}
-                                onClick={() => onDelete(tx.id)}
-                                className="opacity-0 group-hover:opacity-100 transition-opacity ml-1 w-6 h-6 rounded-lg flex items-center justify-center text-[#ff4f6b]"
-                                style={{ background: "rgba(255,79,107,0.1)" }}
-                              >
-                                <Trash2 size={11} />
-                              </motion.button>
+                              <div className="flex items-center gap-1 ml-1">
+                                {onEdit && (
+                                  <motion.button
+                                    whileTap={{ scale: 0.85 }}
+                                    onClick={() => onEdit(tx)}
+                                    className="opacity-60 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity w-6 h-6 rounded-lg flex items-center justify-center text-[#8b6fff]"
+                                    style={{ background: "rgba(108,71,255,0.1)" }}
+                                    aria-label="Edit"
+                                  >
+                                    <Pencil size={11} />
+                                  </motion.button>
+                                )}
+                                <motion.button
+                                  whileTap={{ scale: 0.85 }}
+                                  onClick={() => onDelete(tx.id)}
+                                  className="opacity-60 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity w-6 h-6 rounded-lg flex items-center justify-center text-[#ff4f6b]"
+                                  style={{ background: "rgba(255,79,107,0.1)" }}
+                                  aria-label="Delete"
+                                >
+                                  <Trash2 size={11} />
+                                </motion.button>
+                              </div>
                             )}
                           </motion.div>
                         );

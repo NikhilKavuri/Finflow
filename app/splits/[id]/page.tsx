@@ -11,14 +11,18 @@ import {
   UserPlus,
   MoreVertical,
   X,
+  Edit2,
 } from "lucide-react";
 import { useTrips, calculateBalances, getTripTotal, getMemberSpending } from "@/hooks/useTrips";
 import { formatINR, formatDate } from "@/lib/utils";
 import BottomNav from "@/components/BottomNav";
 import BalanceChart from "@/components/BalanceChart";
 import TripExpenseDrawer from "@/components/TripExpenseDrawer";
+import EditMemberModal from "@/components/EditMemberModal";
+import EditTitleModal from "@/components/EditTitleModal";
 import Toast from "@/components/Toast";
 import PageLoader from "@/components/PageLoader";
+import type { TripMember, TripExpense } from "@/lib/types";
 
 export default function TripDetailPage() {
   const params = useParams();
@@ -28,17 +32,23 @@ export default function TripDetailPage() {
     getTrip,
     addTripExpense,
     deleteTripExpense,
+    updateTripExpense,
     addMember,
+    updateMember,
     settleDebt,
     archiveTrip,
     deleteTrip,
+    updateTrip,
     hydrated,
   } = useTrips();
 
   const trip = getTrip(tripId);
 
   const [expenseDrawerOpen, setExpenseDrawerOpen] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<TripExpense | null>(null);
   const [addMemberOpen, setAddMemberOpen] = useState(false);
+  const [editingMember, setEditingMember] = useState<TripMember | null>(null);
+  const [editTitleOpen, setEditTitleOpen] = useState(false);
   const [newMemberName, setNewMemberName] = useState("");
   const [newMemberAvatar, setNewMemberAvatar] = useState("😊");
   const [menuOpen, setMenuOpen] = useState(false);
@@ -88,6 +98,31 @@ export default function TripDetailPage() {
     showToast("Member added");
   };
 
+  const handleEditMember = (name: string, avatar: string) => {
+    if (!editingMember) return;
+    updateMember(tripId, editingMember.id, { name, avatar });
+    setEditingMember(null);
+    showToast("Member updated");
+  };
+
+  const handleEditTitle = (name: string, emoji: string) => {
+    updateTrip(tripId, { name, emoji });
+    setEditTitleOpen(false);
+    showToast("Split updated");
+  };
+
+  const handleAddExpense = (expense: Omit<TripExpense, "id">) => {
+    if (editingExpense) {
+      updateTripExpense(tripId, editingExpense.id, expense);
+      showToast("Expense updated");
+    } else {
+      addTripExpense(tripId, expense);
+      showToast("Expense added");
+    }
+    setExpenseDrawerOpen(false);
+    setEditingExpense(null);
+  };
+
   const handleDeleteSplit = async () => {
     setIsDeleting(true);
     try {
@@ -113,12 +148,17 @@ export default function TripDetailPage() {
           </motion.button>
 
           <div className="flex-1 min-w-0 mx-3 text-center">
-            <div className="flex items-center justify-center gap-2">
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setEditTitleOpen(true)}
+              disabled={trip.archived}
+              className="flex items-center justify-center gap-2 group disabled:opacity-50"
+            >
               <span className="text-lg">{trip.emoji}</span>
-              <h1 className="font-syne text-base font-bold text-white truncate">
+              <h1 className="font-syne text-base font-bold text-white truncate group-hover:text-[#8b6fff] transition-colors">
                 {trip.name}
               </h1>
-            </div>
+            </motion.button>
           </div>
 
           {/* Menu */}
@@ -148,6 +188,18 @@ export default function TripDetailPage() {
                     transition={{ duration: 0.15 }}
                     className="absolute right-0 top-12 z-50 w-48 overflow-hidden rounded-xl border border-white/[0.08] bg-[#141419]/95 shadow-[0_12px_40px_rgba(0,0,0,0.5)] backdrop-blur-xl"
                   >
+                    {!trip.archived && (
+                      <button
+                        onClick={() => {
+                          setEditTitleOpen(true);
+                          setMenuOpen(false);
+                        }}
+                        className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-white hover:bg-white/[0.04] transition-colors"
+                      >
+                        <Edit2 size={15} className="text-[#8b6fff]" />
+                        Edit Split
+                      </button>
+                    )}
                     <button
                       onClick={() => {
                         setAddMemberOpen(true);
@@ -195,20 +247,23 @@ export default function TripDetailPage() {
           </div>
         </div>
 
-        {/* Member strip */}
+        {/* Member strip with edit on click */}
         <div className="px-4 pb-3 flex gap-2 overflow-x-auto hide-scrollbar">
           {trip.members.map((member) => (
-            <div
+            <motion.button
               key={member.id}
-              className="flex flex-col items-center gap-1 flex-shrink-0"
+              whileTap={{ scale: 0.95 }}
+              onClick={() => !trip.archived && setEditingMember(member)}
+              disabled={trip.archived}
+              className="flex flex-col items-center gap-1 flex-shrink-0 group disabled:opacity-50"
             >
-              <div className="w-9 h-9 rounded-full bg-[#252533] border border-white/[0.06] flex items-center justify-center text-sm">
+              <div className="w-9 h-9 rounded-full bg-[#252533] border border-white/[0.06] flex items-center justify-center text-sm group-hover:border-[#8b6fff]/40 group-hover:bg-[#6c47ff]/15 transition-all">
                 {member.avatar}
               </div>
-              <span className="text-[9px] font-semibold text-[#5a5a6e] max-w-[48px] truncate">
+              <span className="text-[9px] font-semibold text-[#5a5a6e] max-w-[48px] truncate group-hover:text-[#9898aa] transition-colors">
                 {member.name}
               </span>
-            </div>
+            </motion.button>
           ))}
         </div>
       </nav>
@@ -293,14 +348,10 @@ export default function TripDetailPage() {
                     const payerInSplit = expense.splitAmong.includes(expense.paidBy);
 
                     return (
-                      <motion.div
-                        key={expense.id}
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.3, delay: i * 0.04 }}
-                        className="rounded-xl border border-white/[0.06] bg-[#1a1a24] p-3"
-                      >
-                        <div className="flex items-start gap-3">
+                        <div
+                          key={expense.id}
+                          className="flex items-center gap-3"
+                        >
                           <div className="w-9 h-9 rounded-lg bg-[#6c47ff]/15 flex items-center justify-center text-sm flex-shrink-0">
                             {payer?.avatar || "👤"}
                           </div>
@@ -363,19 +414,30 @@ export default function TripDetailPage() {
                           </div>
 
                           {!trip.archived && (
-                            <motion.button
-                              whileTap={{ scale: 0.85 }}
-                              onClick={() => {
-                                deleteTripExpense(tripId, expense.id);
-                                showToast("Expense removed");
-                              }}
-                              className="w-7 h-7 rounded-full bg-red-500/10 flex items-center justify-center text-red-400 flex-shrink-0 mt-0.5"
-                            >
-                              <Trash2 size={11} />
-                            </motion.button>
+                            <div className="flex gap-1 flex-shrink-0 mt-0.5">
+                              <motion.button
+                                whileTap={{ scale: 0.85 }}
+                                onClick={() => {
+                                  setEditingExpense(expense);
+                                  setExpenseDrawerOpen(true);
+                                }}
+                                className="w-7 h-7 rounded-full bg-[#6c47ff]/10 flex items-center justify-center text-[#8b6fff]"
+                              >
+                                <Edit2 size={11} />
+                              </motion.button>
+                              <motion.button
+                                whileTap={{ scale: 0.85 }}
+                                onClick={() => {
+                                  deleteTripExpense(tripId, expense.id);
+                                  showToast("Expense removed");
+                                }}
+                                className="w-7 h-7 rounded-full bg-red-500/10 flex items-center justify-center text-red-400"
+                              >
+                                <Trash2 size={11} />
+                              </motion.button>
+                            </div>
                           )}
                         </div>
-                      </motion.div>
                     );
                   })}
                 </div>
@@ -431,12 +493,17 @@ export default function TripDetailPage() {
             >
               <BalanceChart
                 balances={balances}
+                trip={trip}
                 onSettle={
                   trip.archived
                     ? undefined
                     : (from, to, amount) => {
+                        const currentBalance = balances.find(
+                          (b) => b.from.id === from && b.to.id === to
+                        );
+                        const isPartial = currentBalance && amount < currentBalance.amount;
                         settleDebt(tripId, from, to, amount);
-                        showToast("Debt settled! 🤝");
+                        showToast(isPartial ? `₹${amount.toLocaleString()} paid! 💸` : "Debt settled! 🤝");
                       }
                 }
                 interactive={!trip.archived}
@@ -461,7 +528,7 @@ export default function TripDetailPage() {
                           <span className="font-medium text-[#9898aa]">
                             {fromMember?.name}
                           </span>
-                          <span>paid</span>
+                          <span>{s.isPartialPayment ? "paid" : "settled"}</span>
                           <span className="font-bold text-[#2ce88a]">
                             {formatINR(s.amount)}
                           </span>
@@ -598,19 +665,46 @@ export default function TripDetailPage() {
 
       <BottomNav
         disabled={trip.archived}
-        onAddClick={() => setExpenseDrawerOpen(true)}
+        onAddClick={() => {
+          setEditingExpense(null);
+          setExpenseDrawerOpen(true);
+        }}
       />
 
+      {/* Expense Drawer */}
       <AnimatePresence>
         {expenseDrawerOpen && (
           <TripExpenseDrawer
             members={trip.members}
-            onClose={() => setExpenseDrawerOpen(false)}
-            onSubmit={(expense) => {
-              addTripExpense(tripId, expense);
+            onClose={() => {
               setExpenseDrawerOpen(false);
-              showToast("Expense added! 💰");
+              setEditingExpense(null);
             }}
+            onSubmit={handleAddExpense}
+            initialExpense={editingExpense ?? undefined}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Edit Member Modal */}
+      <AnimatePresence>
+        {editingMember && (
+          <EditMemberModal
+            member={editingMember}
+            onClose={() => setEditingMember(null)}
+            onSubmit={handleEditMember}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Edit Title Modal */}
+      <AnimatePresence>
+        {editTitleOpen && (
+          <EditTitleModal
+            title={trip.name}
+            emoji={trip.emoji}
+            onClose={() => setEditTitleOpen(false)}
+            onSubmit={handleEditTitle}
           />
         )}
       </AnimatePresence>

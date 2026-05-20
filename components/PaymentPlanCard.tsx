@@ -125,6 +125,15 @@ export default function PaymentPlanCard({
           </span>
           <span className="font-bold text-white">{formatINR(plan.cardDueTotal)}</span>
         </div>
+        {plan.reservedCardSpend > 0 && (
+          <div className="flex items-center justify-between gap-3 text-xs">
+            <span className="flex min-w-0 items-center gap-2 text-[#9898aa]">
+              <CreditCard size={13} className="text-[#ff6b35]" />
+              🔒 Reserved (deducted)
+            </span>
+            <span className="font-bold text-[#ff6b35]">{formatINR(plan.reservedCardSpend)}</span>
+          </div>
+        )}
         {plan.cardFutureTotal > 0 && (
           <div className="flex items-center justify-between gap-3 text-xs">
             <span className="flex min-w-0 items-center gap-2 text-[#9898aa]">
