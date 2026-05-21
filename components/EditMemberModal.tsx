@@ -2,18 +2,20 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { X } from "lucide-react";
-import type { TripMember } from "@/lib/types";
+import { X, Crown } from "lucide-react";
+import type { SplitMember } from "@/lib/types";
 
 interface Props {
-  member: TripMember;
+  member: SplitMember;
   onClose: () => void;
   onSubmit: (name: string, avatar: string) => void;
+  canPromote?: boolean;
+  onPromote?: () => void;
 }
 
 const AVATAR_OPTIONS = ["😎", "🤩", "😊", "🥳", "🧐", "😈", "🦊", "🐻", "🦁", "🐸", "🌸", "⭐"];
 
-export default function EditMemberModal({ member, onClose, onSubmit }: Props) {
+export default function EditMemberModal({ member, onClose, onSubmit, canPromote = false, onPromote }: Props) {
   const [name, setName] = useState(member.name);
   const [avatar, setAvatar] = useState(member.avatar);
   const [error, setError] = useState("");
@@ -102,6 +104,14 @@ export default function EditMemberModal({ member, onClose, onSubmit }: Props) {
             </div>
           </div>
 
+          {/* Role Badge */}
+          {member.role === "admin" && (
+            <div className="mb-4 px-3 py-2 bg-yellow-500/10 border border-yellow-500/20 rounded-xl flex items-center gap-2 text-sm text-yellow-500">
+              <Crown size={14} />
+              <span>Admin</span>
+            </div>
+          )}
+
           <div className="flex gap-2">
             <motion.button
               whileTap={{ scale: 0.95 }}
@@ -110,6 +120,19 @@ export default function EditMemberModal({ member, onClose, onSubmit }: Props) {
             >
               Cancel
             </motion.button>
+            {canPromote && member.role !== "admin" && onPromote && (
+              <motion.button
+                whileTap={{ scale: 0.95 }}
+                onClick={() => {
+                  onPromote();
+                  onClose();
+                }}
+                className="flex-1 py-3 rounded-xl text-sm font-bold text-white bg-yellow-600 hover:bg-yellow-700 transition-colors flex items-center justify-center gap-2"
+              >
+                <Crown size={14} />
+                Admin
+              </motion.button>
+            )}
             <motion.button
               whileTap={{ scale: 0.95 }}
               onClick={handleSubmit}

@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { CalendarDays, X, Check, ChevronDown } from "lucide-react";
+import { CalendarDays, X, Check, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { CATEGORIES, type Category } from "@/lib/categories";
 import { classifyExpense } from "@/lib/classifier";
 import type { Transaction, Bank, PaymentMethodConfig } from "@/lib/types";
-import { formatDate, formatMonthLabel, getCurrentMonthPrefix, getTodayISO } from "@/lib/utils";
+import { formatDate, formatMonthLabel, getCurrentMonthPrefix, getDaysInMonth, getTodayISO } from "@/lib/utils";
 import InlineCalculator from "./InlineCalculator";
 
 interface Props {
@@ -26,6 +26,7 @@ export default function ExpenseDrawer({ onClose, onSubmit, onEdit, banks, paymen
   const [name, setName] = useState(editingTransaction?.name || "");
   const [amount, setAmount] = useState(editingTransaction ? String(editingTransaction.amount) : "");
   const [date, setDate] = useState(editingTransaction?.date || getTodayISO());
+  const [displayedMonth, setDisplayedMonth] = useState((editingTransaction?.date || getTodayISO()).slice(0, 7));
   const [selectedCat, setSelectedCat] = useState<string | null>(editingTransaction?.category || null);
   const [txType, setTxType] = useState<TxType>(editingTransaction?.type || "expense");
   const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState<string>(
@@ -42,7 +43,10 @@ export default function ExpenseDrawer({ onClose, onSubmit, onEdit, banks, paymen
   const today = getTodayISO();
   const currentDay = Number(today.slice(8, 10));
   const selectedDay = Number(date.slice(8, 10));
-  const monthDays = Array.from({ length: currentDay }, (_, index) => index + 1);
+  const daysInDisplayedMonth = getDaysInMonth(displayedMonth);
+  const selectableDayCount = displayedMonth === currentMonth ? currentDay : daysInDisplayedMonth;
+  const monthDays = Array.from({ length: selectableDayCount }, (_, index) => selectableDayCount - index);
+  const canGoNextMonth = displayedMonth < currentMonth;
 
   const selectedBank = banks.find((b) => b.id === selectedBankId) ?? banks[0];
   const selectedPaymentMethod = paymentMethods.find((p) => p.id === selectedPaymentMethodId);
@@ -79,6 +83,19 @@ export default function ExpenseDrawer({ onClose, onSubmit, onEdit, banks, paymen
   };
 
   const cardStatus = getCardStatusMessage();
+
+  const shiftMonth = (delta: number) => {
+    const [year, month] = displayedMonth.split("-").map(Number);
+    const next = new Date(year, month - 1 + delta, 1);
+    const nextMonth = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`;
+    if (nextMonth > currentMonth) return;
+    setDisplayedMonth(nextMonth);
+
+    if (!date.startsWith(nextMonth)) {
+      const day = Math.min(Number(date.slice(8, 10)), nextMonth === currentMonth ? currentDay : getDaysInMonth(nextMonth));
+      setDate(`${nextMonth}-${String(day).padStart(2, "0")}`);
+    }
+  };
 
   useEffect(() => {
     const root = document.documentElement;
@@ -142,7 +159,6 @@ export default function ExpenseDrawer({ onClose, onSubmit, onEdit, banks, paymen
     if (!name.trim()) { setError("Please enter a description."); return; }
     const amt = parseFloat(amount);
     if (isNaN(amt) || amt <= 0) { setError("Enter a valid amount."); return; }
-    if (!date.startsWith(currentMonth)) { setError("Only the current month can be edited."); return; }
     const cat = selectedCat ?? aiSuggest?.id ?? "other";
     const pm = paymentMethods.find((p) => p.id === selectedPaymentMethodId);
 
@@ -252,24 +268,42 @@ export default function ExpenseDrawer({ onClose, onSubmit, onEdit, banks, paymen
                   <div className="min-w-0">
                     <div className="truncate text-sm font-bold text-white">{formatDate(date)}</div>
                     <div className="truncate text-[11px] font-semibold text-[#5a5a6e]">
-                      {formatMonthLabel(currentMonth)}
+                      {formatMonthLabel(displayedMonth)}
                     </div>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDate(today);
-                    setError("");
-                  }}
-                  className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-bold text-[#9898aa] transition-colors hover:text-white"
-                >
-                  Today
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => shiftMonth(-1)}
+                    className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-[#9898aa] transition-colors hover:text-white"
+                  >
+                    <ChevronLeft size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => shiftMonth(1)}
+                    disabled={!canGoNextMonth}
+                    className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-[#9898aa] transition-colors hover:text-white disabled:opacity-35"
+                  >
+                    <ChevronRight size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDisplayedMonth(currentMonth);
+                      setDate(today);
+                      setError("");
+                    }}
+                    className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-bold text-[#9898aa] transition-colors hover:text-white"
+                  >
+                    Today
+                  </button>
+                </div>
               </div>
               <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
                 {monthDays.map((day) => {
-                  const value = `${currentMonth}-${String(day).padStart(2, "0")}`;
+                  const value = `${displayedMonth}-${String(day).padStart(2, "0")}`;
                   const active = day === selectedDay;
                   const weekday = new Date(`${value}T00:00:00`).toLocaleDateString("en-IN", {
                     weekday: "short",

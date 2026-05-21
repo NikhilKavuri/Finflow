@@ -12,8 +12,11 @@ import {
   MoreVertical,
   X,
   Edit2,
+  Crown,
+  Shield,
 } from "lucide-react";
-import { useTrips, calculateBalances, getTripTotal, getMemberSpending } from "@/hooks/useTrips";
+import { useSplits, calculateBalances, getSplitTotal, getMemberSpending } from "@/hooks/useSplits";
+import { useAuth } from "@/contexts/AuthContext";
 import { formatINR, formatDate } from "@/lib/utils";
 import BottomNav from "@/components/BottomNav";
 import BalanceChart from "@/components/BalanceChart";
@@ -22,40 +25,46 @@ import EditMemberModal from "@/components/EditMemberModal";
 import EditTitleModal from "@/components/EditTitleModal";
 import Toast from "@/components/Toast";
 import PageLoader from "@/components/PageLoader";
-import type { TripMember, TripExpense } from "@/lib/types";
+import type { SplitMember, SplitExpense } from "@/lib/types";
 
 export default function TripDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { user } = useAuth();
   const tripId = params.id as string;
   const {
-    getTrip,
-    addTripExpense,
-    deleteTripExpense,
-    updateTripExpense,
+    getSplit,
+    addSplitExpense,
+    deleteSplitExpense,
+    updateSplitExpense,
     addMember,
     updateMember,
     settleDebt,
-    archiveTrip,
-    deleteTrip,
-    updateTrip,
+    archiveSplit,
+    deleteSplit,
+    updateSplit,
+    isAdmin,
+    assignAdmin,
     hydrated,
-  } = useTrips();
+  } = useSplits();
 
-  const trip = getTrip(tripId);
+  const trip = getSplit(tripId);
+  const canEdit = isAdmin(tripId);
 
   const [expenseDrawerOpen, setExpenseDrawerOpen] = useState(false);
-  const [editingExpense, setEditingExpense] = useState<TripExpense | null>(null);
+  const [editingExpense, setEditingExpense] = useState<SplitExpense | null>(null);
   const [addMemberOpen, setAddMemberOpen] = useState(false);
-  const [editingMember, setEditingMember] = useState<TripMember | null>(null);
+  const [editingMember, setEditingMember] = useState<SplitMember | null>(null);
   const [editTitleOpen, setEditTitleOpen] = useState(false);
   const [newMemberName, setNewMemberName] = useState("");
+  const [newMemberEmail, setNewMemberEmail] = useState("");
   const [newMemberAvatar, setNewMemberAvatar] = useState("😊");
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"expenses" | "balances">("expenses");
   const [toast, setToast] = useState<string | null>(null);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [memberToPromote, setMemberToPromote] = useState<SplitMember | null>(null);
 
   const AVATAR_OPTIONS = ["😎", "🤩", "😊", "🥳", "🧐", "😈", "🦊", "🐻", "🦁", "🐸", "🌸", "⭐"];
 
@@ -65,7 +74,7 @@ export default function TripDetailPage() {
   };
 
   const balances = useMemo(() => (trip ? calculateBalances(trip) : []), [trip]);
-  const total = useMemo(() => (trip ? getTripTotal(trip) : 0), [trip]);
+  const total = useMemo(() => (trip ? getSplitTotal(trip) : 0), [trip]);
   const memberSpending = useMemo(() => (trip ? getMemberSpending(trip) : {}), [trip]);
   const perPersonAvg = trip && trip.members.length > 0 ? total / trip.members.length : 0;
 
@@ -92,8 +101,13 @@ export default function TripDetailPage() {
 
   const handleAddMember = () => {
     if (!newMemberName.trim()) return;
-    addMember(tripId, { name: newMemberName.trim(), avatar: newMemberAvatar });
+    addMember(tripId, { 
+      name: newMemberName.trim(), 
+      avatar: newMemberAvatar,
+      email: newMemberEmail.trim() || undefined,
+    });
     setNewMemberName("");
+    setNewMemberEmail("");
     setAddMemberOpen(false);
     showToast("Member added");
   };
@@ -106,17 +120,17 @@ export default function TripDetailPage() {
   };
 
   const handleEditTitle = (name: string, emoji: string) => {
-    updateTrip(tripId, { name, emoji });
+    updateSplit(tripId, { name, emoji });
     setEditTitleOpen(false);
     showToast("Split updated");
   };
 
-  const handleAddExpense = (expense: Omit<TripExpense, "id">) => {
+  const handleAddExpense = (expense: Omit<SplitExpense, "id">) => {
     if (editingExpense) {
-      updateTripExpense(tripId, editingExpense.id, expense);
+      updateSplitExpense(tripId, editingExpense.id, expense);
       showToast("Expense updated");
     } else {
-      addTripExpense(tripId, expense);
+      addSplitExpense(tripId, expense);
       showToast("Expense added");
     }
     setExpenseDrawerOpen(false);
@@ -126,11 +140,25 @@ export default function TripDetailPage() {
   const handleDeleteSplit = async () => {
     setIsDeleting(true);
     try {
-      await deleteTrip(tripId);
+      await deleteSplit(tripId);
       router.push("/splits");
     } catch {
       showToast("Failed to delete. Try again.");
       setIsDeleting(false);
+    }
+  };
+
+  const handlePromoteToAdmin = async (memberId: string) => {
+    if (!canEdit) {
+      showToast("Only admins can promote members");
+      return;
+    }
+    try {
+      await assignAdmin(tripId, memberId);
+      showToast("Member promoted to admin");
+      setMemberToPromote(null);
+    } catch {
+      showToast("Failed to promote member");
     }
   };
 
@@ -188,7 +216,7 @@ export default function TripDetailPage() {
                     transition={{ duration: 0.15 }}
                     className="absolute right-0 top-12 z-50 w-48 overflow-hidden rounded-xl border border-white/[0.08] bg-[#141419]/95 shadow-[0_12px_40px_rgba(0,0,0,0.5)] backdrop-blur-xl"
                   >
-                    {!trip.archived && (
+                    {canEdit && !trip.archived && (
                       <button
                         onClick={() => {
                           setEditTitleOpen(true);
@@ -210,36 +238,40 @@ export default function TripDetailPage() {
                       <UserPlus size={15} className="text-[#8b6fff]" />
                       Add Member
                     </button>
-                    <button
-                      onClick={() => {
-                        archiveTrip(tripId);
-                        setMenuOpen(false);
-                        showToast(trip.archived ? "Split restored" : "Split archived");
-                      }}
-                      className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-white hover:bg-white/[0.04] transition-colors"
-                    >
-                      {trip.archived ? (
-                        <>
-                          <ArchiveRestore size={15} className="text-[#b8ff57]" />
-                          Restore Split
-                        </>
-                      ) : (
-                        <>
-                          <Archive size={15} className="text-[#facc15]" />
-                          Archive Split
-                        </>
-                      )}
-                    </button>
-                    <button
-                      onClick={() => {
-                        setMenuOpen(false);
-                        setConfirmDeleteOpen(true);
-                      }}
-                      className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-red-400 hover:bg-red-500/[0.06] transition-colors"
-                    >
-                      <Trash2 size={15} />
-                      Delete Split
-                    </button>
+                    {canEdit && (
+                      <button
+                        onClick={() => {
+                          archiveSplit(tripId);
+                          setMenuOpen(false);
+                          showToast(trip.archived ? "Split restored" : "Split archived");
+                        }}
+                        className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-white hover:bg-white/[0.04] transition-colors"
+                      >
+                        {trip.archived ? (
+                          <>
+                            <ArchiveRestore size={15} className="text-[#b8ff57]" />
+                            Restore Split
+                          </>
+                        ) : (
+                          <>
+                            <Archive size={15} className="text-[#facc15]" />
+                            Archive Split
+                          </>
+                        )}
+                      </button>
+                    )}
+                    {canEdit && (
+                      <button
+                        onClick={() => {
+                          setMenuOpen(false);
+                          setConfirmDeleteOpen(true);
+                        }}
+                        className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-red-400 hover:bg-red-500/[0.06] transition-colors"
+                      >
+                        <Trash2 size={15} />
+                        Delete Split
+                      </button>
+                    )}
                   </motion.div>
                 </>
               )}
@@ -255,14 +287,20 @@ export default function TripDetailPage() {
               whileTap={{ scale: 0.95 }}
               onClick={() => !trip.archived && setEditingMember(member)}
               disabled={trip.archived}
-              className="flex flex-col items-center gap-1 flex-shrink-0 group disabled:opacity-50"
+              className="flex flex-col items-center gap-1 flex-shrink-0 group disabled:opacity-50 relative"
             >
               <div className="w-9 h-9 rounded-full bg-[#252533] border border-white/[0.06] flex items-center justify-center text-sm group-hover:border-[#8b6fff]/40 group-hover:bg-[#6c47ff]/15 transition-all">
                 {member.avatar}
               </div>
+              {member.role === "admin" && (
+                <Crown size={12} className="absolute top-0 right-0 text-yellow-400 fill-yellow-400" />
+              )}
               <span className="text-[9px] font-semibold text-[#5a5a6e] max-w-[48px] truncate group-hover:text-[#9898aa] transition-colors">
                 {member.name}
               </span>
+              {member.status === "pending" && (
+                <span className="text-[7px] text-yellow-400 font-semibold">pending</span>
+              )}
             </motion.button>
           ))}
         </div>
@@ -428,7 +466,7 @@ export default function TripDetailPage() {
                               <motion.button
                                 whileTap={{ scale: 0.85 }}
                                 onClick={() => {
-                                  deleteTripExpense(tripId, expense.id);
+                                  deleteSplitExpense(tripId, expense.id);
                                   showToast("Expense removed");
                                 }}
                                 className="w-7 h-7 rounded-full bg-red-500/10 flex items-center justify-center text-red-400"
@@ -651,6 +689,14 @@ export default function TripDetailPage() {
                 />
               </div>
 
+              <input
+                className="w-full bg-[#1e1e28] border border-white/10 rounded-xl px-3 py-3 text-sm text-white placeholder-[#5a5a6e] outline-none focus:border-[#8b6fff] mb-4"
+                placeholder="Email (optional)"
+                type="email"
+                value={newMemberEmail}
+                onChange={(e) => setNewMemberEmail(e.target.value)}
+              />
+
               <motion.button
                 whileTap={{ scale: 0.97 }}
                 onClick={handleAddMember}
@@ -693,7 +739,65 @@ export default function TripDetailPage() {
             member={editingMember}
             onClose={() => setEditingMember(null)}
             onSubmit={handleEditMember}
+            canPromote={canEdit && editingMember.role !== "admin"}
+            onPromote={() => setMemberToPromote(editingMember)}
           />
+        )}
+      </AnimatePresence>
+
+      {/* Promote to Admin Modal */}
+      <AnimatePresence>
+        {memberToPromote && canEdit && (
+          <motion.div
+            className="fixed inset-0 z-[100] flex items-center justify-center px-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              style={{ backdropFilter: "blur(4px)" }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setMemberToPromote(null)}
+              className="absolute inset-0 bg-black/20"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ type: "spring", stiffness: 400, damping: 30 }}
+              className="relative z-50 w-[calc(100%-2rem)] max-w-[340px] rounded-2xl border border-white/[0.08] bg-[#18181f] p-6"
+            >
+              <div className="text-center mb-6">
+                <div className="text-4xl mb-3">{memberToPromote.avatar}</div>
+                <h3 className="font-syne text-lg font-bold text-white mb-1">
+                  Make {memberToPromote.name} Admin?
+                </h3>
+                <p className="text-sm text-[#5a5a6e]">
+                  They'll be able to edit, archive, and delete this split.
+                </p>
+              </div>
+
+              <div className="flex gap-3">
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => setMemberToPromote(null)}
+                  className="flex-1 py-3 rounded-xl font-semibold text-white bg-white/10 hover:bg-white/20 transition-colors"
+                >
+                  Cancel
+                </motion.button>
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => handlePromoteToAdmin(memberToPromote.id)}
+                  className="flex-1 py-3 rounded-xl font-semibold text-white bg-[#6c47ff] hover:bg-[#7d5bff] transition-colors flex items-center justify-center gap-2"
+                >
+                  <Crown size={16} />
+                  Make Admin
+                </motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
 

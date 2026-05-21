@@ -6,9 +6,17 @@ import type { AppState, Transaction, Bank, PaymentMethodConfig } from "@/lib/typ
 import { getTodayISO } from "@/lib/utils";
 import { syncExpensesToFirestore, loadExpensesFromFirestore } from "@/lib/firestore";
 
-const STORAGE_KEY = "finflow_state";
+const STORAGE_KEY_PREFIX = "finflow_state";
+const OLD_STORAGE_KEY = "finflow_state"; // Legacy non-keyed key
 const UID_KEY = "finflow_uid";
-const MIGRATED_KEY = "finflow_migrated";
+const MIGRATED_KEY_PREFIX = "finflow_migrated";
+
+function getStorageKey(uid: string | null): string {
+  return uid ? `${STORAGE_KEY_PREFIX}_${uid}` : OLD_STORAGE_KEY;
+}
+function getMigratedKey(uid: string): string {
+  return `${MIGRATED_KEY_PREFIX}_${uid}`;
+}
 
 const DEFAULT_PAYMENT_METHODS: PaymentMethodConfig[] = [
   { id: "pm_card", name: "Credit Card", type: "credit_card", emoji: "💳", billingCycleStart: 15, paymentDueDay: 5 },
@@ -86,10 +94,23 @@ function getBankBalanceDelta(
   return tx.type === "expense" ? -tx.amount : tx.amount;
 }
 
-function loadState(): AppState {
+function loadState(uid: string | null): AppState {
   if (typeof window === "undefined") return DEFAULT_STATE;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const key = getStorageKey(uid);
+    let raw = localStorage.getItem(key);
+    
+    // If per-user key has no data but old key does, migrate
+    if (!raw && uid) {
+      const oldRaw = localStorage.getItem(OLD_STORAGE_KEY);
+      if (oldRaw) {
+        raw = oldRaw;
+        // Save to per-user key and remove old key
+        localStorage.setItem(key, oldRaw);
+        localStorage.removeItem(OLD_STORAGE_KEY);
+      }
+    }
+    
     if (!raw) return DEFAULT_STATE;
     const parsed = { ...DEFAULT_STATE, ...JSON.parse(raw) };
     return {
@@ -115,9 +136,9 @@ function loadState(): AppState {
   }
 }
 
-function saveState(state: AppState) {
+function saveState(uid: string | null, state: AppState) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(getStorageKey(uid), JSON.stringify(state));
   } catch {}
 }
 
@@ -127,36 +148,16 @@ export function useExpenses() {
   const [hydrated, setHydrated] = useState(false);
   const uidRef = useRef<string | null>(null);
 
-  // Hydrate from localStorage first, then attempt Firebase sync
+  // Hydrate: Firestore-first, localStorage as fallback
   useEffect(() => {
     const init = async () => {
-      // 1. Load from localStorage
-      const localState = loadState();
-      const hasLocalData = localState.onboarded && localState.transactions.length > 0;
-
-      // 2. Get uid from localStorage (set by AuthContext when user logs in)
       const uid = user?.uid || localStorage.getItem(UID_KEY);
       if (uid) {
         uidRef.current = uid;
       }
 
-      // 3. Sync logic
-      if (hasLocalData && uid) {
-        // User has local data — use it and sync to Firebase
-        setState(localState);
-        setHydrated(true);
-
-        const alreadyMigrated = localStorage.getItem(MIGRATED_KEY);
-        if (!alreadyMigrated) {
-          // First-time migration: push localStorage data to Firestore
-          syncExpensesToFirestore(uid, localState);
-          localStorage.setItem(MIGRATED_KEY, "true");
-        } else {
-          // Already migrated — still sync current state
-          syncExpensesToFirestore(uid, localState);
-        }
-      } else if (!hasLocalData && uid) {
-        // No local data — try recovering from Firestore
+      if (uid) {
+        // Always try Firestore first when we have a UID
         try {
           const firestoreState = await loadExpensesFromFirestore(uid);
           if (firestoreState && firestoreState.onboarded) {
@@ -169,16 +170,30 @@ export function useExpenses() {
               paymentMethods: normalizePaymentMethods(firestoreState.paymentMethods),
             };
             setState(restoredState);
-            saveState(restoredState); // Restore to localStorage too
+            saveState(uid, restoredState); // Cache locally for next load
             setHydrated(true);
             return;
           }
-        } catch {}
-        // No Firestore data either — fresh start
-        setState(localState);
+        } catch {
+          // Firestore failed — fall through to localStorage
+        }
+
+        // Firestore had nothing — try localStorage
+        const localState = loadState(uid);
+        if (localState.onboarded && localState.transactions.length > 0) {
+          setState(localState);
+          setHydrated(true);
+          // Push local data to Firestore as backup
+          syncExpensesToFirestore(uid, localState);
+          return;
+        }
+
+        // No data anywhere — fresh start
+        setState(DEFAULT_STATE);
         setHydrated(true);
       } else {
-        // No uid (user not logged in) or no data — just use localStorage
+        // No uid (not logged in) — use localStorage with null key
+        const localState = loadState(null);
         setState(localState);
         setHydrated(true);
       }
@@ -190,14 +205,9 @@ export function useExpenses() {
   const updateState = useCallback((updater: (prev: AppState) => AppState) => {
     setState((prev) => {
       const next = updater(prev);
-      saveState(next);
-
-      // Sync to Firestore (debounced inside)
       const uid = uidRef.current || localStorage.getItem(UID_KEY);
-      if (uid) {
-        syncExpensesToFirestore(uid, next);
-      }
-
+      saveState(uid, next);
+      if (uid) syncExpensesToFirestore(uid, next);
       return next;
     });
   }, []);

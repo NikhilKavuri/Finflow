@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, ChevronDown, Check } from "lucide-react";
+import { CalendarDays, X, ChevronDown, ChevronLeft, ChevronRight, Check } from "lucide-react";
 import type { TripMember, TripExpense } from "@/lib/types";
-import { getTodayISO } from "@/lib/utils";
+import { formatDate, formatMonthLabel, getCurrentMonthPrefix, getDaysInMonth, getTodayISO } from "@/lib/utils";
 
 interface Props {
   members: TripMember[];
@@ -17,13 +17,35 @@ export default function TripExpenseDrawer({ members, onClose, onSubmit, initialE
   const [description, setDescription] = useState(initialExpense?.description || "");
   const [amount, setAmount] = useState(initialExpense?.amount.toString() || "");
   const [date, setDate] = useState(initialExpense?.date || getTodayISO());
+  const [displayedMonth, setDisplayedMonth] = useState((initialExpense?.date || getTodayISO()).slice(0, 7));
   const [paidBy, setPaidBy] = useState(initialExpense?.paidBy || members[0]?.id || "");
   const [splitAmong, setSplitAmong] = useState<string[]>(initialExpense?.splitAmong || members.map((m) => m.id));
   const [paidByOpen, setPaidByOpen] = useState(false);
   const [error, setError] = useState("");
   const paidByRef = useRef<HTMLDivElement>(null);
+  const today = getTodayISO();
+  const currentMonth = getCurrentMonthPrefix();
+  const currentDay = Number(today.slice(8, 10));
+  const selectedDay = Number(date.slice(8, 10));
+  const daysInDisplayedMonth = getDaysInMonth(displayedMonth);
+  const selectableDayCount = displayedMonth === currentMonth ? currentDay : daysInDisplayedMonth;
+  const monthDays = Array.from({ length: selectableDayCount }, (_, index) => selectableDayCount - index);
+  const canGoNextMonth = displayedMonth < currentMonth;
 
   const payer = members.find((m) => m.id === paidBy);
+
+  const shiftMonth = (delta: number) => {
+    const [year, month] = displayedMonth.split("-").map(Number);
+    const next = new Date(year, month - 1 + delta, 1);
+    const nextMonth = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`;
+    if (nextMonth > currentMonth) return;
+    setDisplayedMonth(nextMonth);
+
+    if (!date.startsWith(nextMonth)) {
+      const day = Math.min(Number(date.slice(8, 10)), nextMonth === currentMonth ? currentDay : getDaysInMonth(nextMonth));
+      setDate(`${nextMonth}-${String(day).padStart(2, "0")}`);
+    }
+  };
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -149,15 +171,77 @@ export default function TripExpenseDrawer({ members, onClose, onSubmit, initialE
           <label className="block text-[11px] font-semibold text-[#5a5a6e] tracking-widest uppercase mb-2">
             Date
           </label>
-          <input
-            type="date"
-            className="w-full bg-[#1e1e28] border border-white/10 rounded-xl px-4 py-3 text-base text-white outline-none focus:border-[#8b6fff] transition-colors"
-            value={date}
-            onChange={(e) => {
-              setDate(e.target.value);
-              setError("");
-            }}
-          />
+          <div className="rounded-2xl border border-white/[0.06] bg-[#1e1e28] p-3">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-[#6c47ff]/15 text-[#8b6fff]">
+                  <CalendarDays size={17} />
+                </div>
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-bold text-white">{formatDate(date)}</div>
+                  <div className="truncate text-[11px] font-semibold text-[#5a5a6e]">
+                    {formatMonthLabel(displayedMonth)}
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => shiftMonth(-1)}
+                  className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-[#9898aa] transition-colors hover:text-white"
+                >
+                  <ChevronLeft size={15} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => shiftMonth(1)}
+                  disabled={!canGoNextMonth}
+                  className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-[#9898aa] transition-colors hover:text-white disabled:opacity-35"
+                >
+                  <ChevronRight size={15} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDisplayedMonth(currentMonth);
+                    setDate(today);
+                    setError("");
+                  }}
+                  className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-bold text-[#9898aa] transition-colors hover:text-white"
+                >
+                  Today
+                </button>
+              </div>
+            </div>
+            <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+              {monthDays.map((day) => {
+                const value = `${displayedMonth}-${String(day).padStart(2, "0")}`;
+                const active = date === value || (date.startsWith(displayedMonth) && day === selectedDay);
+                const weekday = new Date(`${value}T00:00:00`).toLocaleDateString("en-IN", {
+                  weekday: "short",
+                });
+
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => {
+                      setDate(value);
+                      setError("");
+                    }}
+                    className={`flex h-16 w-12 flex-shrink-0 flex-col items-center justify-center rounded-2xl border transition-colors ${
+                      active
+                        ? "border-[#8b6fff] bg-[#6c47ff]/20 text-white"
+                        : "border-white/[0.06] bg-[#252533] text-[#9898aa]"
+                    }`}
+                  >
+                    <span className="text-[10px] font-bold uppercase text-[#5a5a6e]">{weekday}</span>
+                    <span className="font-syne text-lg font-black">{day}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
 
         {/* Paid By */}
@@ -295,4 +379,3 @@ export default function TripExpenseDrawer({ members, onClose, onSubmit, initialE
     </>
   );
 }
-

@@ -1,25 +1,43 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Plus, Trash2 } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface Props {
   onClose: () => void;
-  onSubmit: (name: string, emoji: string, members: { name: string; avatar: string }[]) => void;
+  onSubmit: (
+    name: string,
+    emoji: string,
+    members: { name: string; avatar: string; email?: string }[]
+  ) => void;
 }
 
 const EMOJI_OPTIONS = ["💰", "🍕", "🏠", "🎓", "🤝", "🚗", "🎉", "✈️", "⛺", "🎪", "🛒", "🌴"];
 const AVATAR_OPTIONS = ["😎", "🤩", "😊", "🥳", "🧐", "😈", "🦊", "🐻", "🦁", "🐸", "🌸", "⭐"];
 
 export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
+  const { user } = useAuth();
   const [name, setName] = useState("");
   const [emoji, setEmoji] = useState("💰");
-  const [members, setMembers] = useState<{ name: string; avatar: string }[]>([
-    { name: "", avatar: "😎" },
-    { name: "", avatar: "🤩" },
+  const [members, setMembers] = useState<{ name: string; avatar: string; email?: string }[]>([
+    { name: user?.displayName || "You", avatar: "😎", email: user?.email || undefined },
+    { name: "", avatar: "🤩", email: "" },
   ]);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    setMembers((prev) => {
+      const next = [...prev];
+      next[0] = {
+        ...next[0],
+        name: user?.displayName || "You",
+        email: user?.email || undefined,
+      };
+      return next;
+    });
+  }, [user?.displayName, user?.email]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -42,15 +60,16 @@ export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
 
   const addMember = () => {
     const nextAvatar = AVATAR_OPTIONS[members.length % AVATAR_OPTIONS.length];
-    setMembers([...members, { name: "", avatar: nextAvatar }]);
+    setMembers([...members, { name: "", avatar: nextAvatar, email: "" }]);
   };
 
   const removeMember = (index: number) => {
-    if (members.length <= 2) return;
+    if (members.length <= 2 || index === 0) return;
     setMembers(members.filter((_, i) => i !== index));
   };
 
-  const updateMember = (index: number, field: "name" | "avatar", value: string) => {
+  const updateMember = (index: number, field: "email" | "avatar", value: string) => {
+    if (index === 0 && field !== "avatar") return;
     setMembers(members.map((m, i) => (i === index ? { ...m, [field]: value } : m)));
   };
 
@@ -59,21 +78,29 @@ export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
       setError("Give your split a name");
       return;
     }
-    const validMembers = members.filter((m) => m.name.trim());
+
+    const validMembers = members.filter((m, index) =>
+      index === 0 || m.email?.trim() || m.name.trim()
+    );
+
     if (validMembers.length < 2) {
       setError("Add at least 2 members");
       return;
     }
+
     onSubmit(
       name.trim(),
       emoji,
-      validMembers.map((m) => ({ name: m.name.trim(), avatar: m.avatar }))
+      validMembers.map((m, index) => ({
+        name: index === 0 ? m.name.trim() || "You" : m.name.trim(),
+        avatar: m.avatar,
+        email: m.email?.trim() || undefined,
+      }))
     );
   };
 
   return (
     <>
-      {/* Overlay */}
       <motion.div
         className="fixed inset-0 z-40 bg-black/60"
         style={{ backdropFilter: "blur(4px)" }}
@@ -83,7 +110,6 @@ export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
         onClick={onClose}
       />
 
-      {/* Drawer */}
       <motion.div
         className="keyboard-panel fixed bottom-0 left-1/2 z-50 flex w-full max-w-[480px] flex-col overflow-hidden rounded-t-3xl border border-b-0 border-white/10 bg-[#18181f]"
         style={{ x: "-50%" }}
@@ -92,7 +118,6 @@ export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
         exit={{ y: "100%" }}
         transition={{ type: "spring", stiffness: 340, damping: 38 }}
       >
-        {/* Handle */}
         <div className="flex justify-center pt-3 pb-1">
           <div className="w-10 h-1 bg-white/20 rounded-full" />
         </div>
@@ -115,7 +140,6 @@ export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
             </div>
           )}
 
-          {/* Split Name */}
           <div className="mb-4">
             <label className="block text-[11px] font-semibold text-[#5a5a6e] tracking-widest uppercase mb-2">
               Split Name
@@ -131,30 +155,28 @@ export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
             />
           </div>
 
-          {/* Icon */}
           <div className="mb-4">
             <label className="block text-[11px] font-semibold text-[#5a5a6e] tracking-widest uppercase mb-2">
               Icon
             </label>
             <div className="flex gap-2 flex-wrap">
-              {EMOJI_OPTIONS.map((e) => (
+              {EMOJI_OPTIONS.map((option) => (
                 <motion.button
-                  key={e}
+                  key={option}
                   whileTap={{ scale: 0.9 }}
-                  onClick={() => setEmoji(e)}
+                  onClick={() => setEmoji(option)}
                   className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg border transition-all ${
-                    emoji === e
+                    emoji === option
                       ? "border-[#6c47ff] bg-[#6c47ff]/15 shadow-[0_0_12px_rgba(108,71,255,0.2)]"
                       : "border-white/[0.06] bg-[#1e1e28] hover:border-white/15"
                   }`}
                 >
-                  {e}
+                  {option}
                 </motion.button>
               ))}
             </div>
           </div>
 
-          {/* Members */}
           <div className="mb-6">
             <div className="flex items-center justify-between mb-2">
               <label className="text-[11px] font-semibold text-[#5a5a6e] tracking-widest uppercase">
@@ -179,7 +201,6 @@ export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
                     exit={{ opacity: 0, height: 0 }}
                     className="flex items-center gap-2"
                   >
-                    {/* Avatar picker */}
                     <div className="relative group">
                       <button
                         className="w-10 h-10 rounded-xl bg-[#252533] border border-white/[0.06] flex items-center justify-center text-lg hover:border-[#6c47ff]/40 transition-colors"
@@ -194,16 +215,18 @@ export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
                     </div>
 
                     <input
-                      className="flex-1 bg-[#1e1e28] border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-[#5a5a6e] outline-none focus:border-[#8b6fff] transition-colors"
-                      placeholder={`Member ${index + 1} name`}
-                      value={member.name}
+                      className="flex-1 min-w-0 bg-[#1e1e28] border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-[#5a5a6e] outline-none focus:border-[#8b6fff] disabled:opacity-70 transition-colors"
+                      placeholder={index === 0 ? "You" : `Member ${index + 1} email`}
+                      type={index === 0 ? "text" : "email"}
+                      value={index === 0 ? member.name : member.email || ""}
+                      disabled={index === 0}
                       onChange={(e) => {
-                        updateMember(index, "name", e.target.value);
+                        updateMember(index, "email", e.target.value);
                         setError("");
                       }}
                     />
 
-                    {members.length > 2 && (
+                    {members.length > 2 && index > 0 && (
                       <motion.button
                         whileTap={{ scale: 0.9 }}
                         onClick={() => removeMember(index)}
@@ -218,7 +241,6 @@ export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
             </div>
           </div>
 
-          {/* Submit */}
           <motion.button
             whileTap={{ scale: 0.97 }}
             whileHover={{ translateY: -1 }}

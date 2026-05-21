@@ -53,7 +53,7 @@ export default function BalanceChart({ balances, trip, onSettle, interactive = t
             whileTap={interactive ? { scale: 0.98 } : undefined}
             onClick={() => interactive && setSelectedBalance(entry)}
             disabled={!interactive}
-            className="relative overflow-hidden rounded-xl border border-white/[0.06] bg-[#1a1a24] p-3 text-left transition-all hover:border-white/15 disabled:hover:border-white/[0.06]"
+            className="relative w-full overflow-hidden rounded-xl border border-white/[0.06] bg-[#1a1a24] p-3 text-left transition-all hover:border-white/15 disabled:hover:border-white/[0.06]"
           >
             {/* Subtle accent line */}
             <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-[#ff6b35] to-[#ff6b35]/40" />

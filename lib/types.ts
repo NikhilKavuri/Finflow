@@ -43,12 +43,16 @@ export interface PaymentMethodConfig {
   paymentDueDay?: number;
 }
 
-// ── Split / Splitwise Types ──────────────────────────────────
+// ── Split Types ─────────────────────────────────────────────
 
 export interface SplitMember {
   id: string;
   name: string;
   avatar: string; // emoji avatar
+  email?: string;                               // linked email (if registered user)
+  uid?: string;                                 // linked Firebase UID
+  role?: "admin" | "member";                    // role in the split
+  status?: "accepted" | "pending" | "rejected"; // invitation status
 }
 
 export interface SplitExpense {
@@ -68,9 +72,8 @@ export interface SplitSettlement {
   amount: number;
   settled: boolean;
   date: string;
-  isPartialPayment?: boolean; // true if this is a partial payment
+  isPartialPayment?: boolean;
 }
-
 
 export interface SplitSession {
   id: string;
@@ -81,6 +84,36 @@ export interface SplitSession {
   settlements: SplitSettlement[];
   createdAt: string;
   archived: boolean;
+  creatorUid?: string;       // who created the split
+  isCollaborative?: boolean; // true if stored in shared Firestore collection
+}
+
+// ── Notification Types ──────────────────────────────────────
+
+export interface SplitNotification {
+  id: string;
+  type: "split_invite" | "split_update" | "expense_added" | "settlement";
+  splitId: string;
+  splitName: string;
+  splitEmoji: string;
+  fromUid: string;
+  fromName: string;
+  message: string;
+  createdAt: string;
+  read: boolean;
+  targetUid?: string;
+  targetEmail?: string;
+  inviteId?: string;
+  source?: "user" | "splitInvite";
+}
+
+// ── User Profile (for email lookup) ─────────────────────────
+
+export interface UserProfile {
+  uid: string;
+  email: string;
+  displayName: string;
+  photoURL?: string;
 }
 
 // Legacy aliases for backwards compatibility

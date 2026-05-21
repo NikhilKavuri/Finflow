@@ -4,16 +4,17 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { Split, Search } from "lucide-react";
-import { useTrips } from "@/hooks/useTrips";
+import { useSplits } from "@/hooks/useSplits";
 import BottomNav from "@/components/BottomNav";
 import TripCard from "@/components/TripCard";
 import CreateTripDrawer from "@/components/CreateTripDrawer";
+import NotificationIcon from "@/components/NotificationIcon";
 import Toast from "@/components/Toast";
 import PageLoader from "@/components/PageLoader";
 
 export default function TripsPage() {
   const router = useRouter();
-  const { trips, hydrated, createTrip } = useTrips();
+  const { splits: trips, hydrated, createSplit, acceptInvite, rejectInvite } = useSplits();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -48,9 +49,21 @@ export default function TripsPage() {
             <Split size={20} className="text-[#8b6fff]" />
             <span className="font-syne text-xl font-black gradient-text">Splits</span>
           </div>
-          <span className="text-xs font-semibold text-[#5a5a6e]">
-            {activeTrips.length} active
-          </span>
+          <div className="flex items-center gap-2">
+            <NotificationIcon
+              onInviteClick={async (notification) => {
+                await acceptInvite(notification.splitId);
+                showToast("Split invitation accepted");
+              }}
+              onInviteReject={async (notification) => {
+                await rejectInvite(notification.splitId);
+                showToast("Split invitation rejected");
+              }}
+            />
+            <span className="text-xs font-semibold text-[#5a5a6e]">
+              {activeTrips.length} active
+            </span>
+          </div>
         </div>
 
         {/* Search */}
@@ -152,8 +165,8 @@ export default function TripsPage() {
         {drawerOpen && (
           <CreateTripDrawer
             onClose={() => setDrawerOpen(false)}
-            onSubmit={(name, emoji, members) => {
-              createTrip(name, emoji, members);
+            onSubmit={async (name, emoji, members) => {
+              await createSplit(name, emoji, members);
               setDrawerOpen(false);
               showToast("Split created! 🎉");
             }}

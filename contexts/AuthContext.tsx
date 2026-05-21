@@ -20,6 +20,7 @@ import {
   logOut as firebaseLogOut,
   type User,
 } from "@/lib/firebase";
+import { saveUserProfile } from "@/lib/firestore";
 
 const UID_KEY = "finflow_uid";
 
@@ -101,11 +102,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         setUser(firebaseUser);
         setAuthError(null);
         localStorage.setItem(UID_KEY, firebaseUser.uid);
+        
+        const profile: { email: string; displayName: string; photoURL?: string } = {
+          email: firebaseUser.email || "",
+          displayName: firebaseUser.displayName || "User",
+        };
+        if (firebaseUser.photoURL) {
+          profile.photoURL = firebaseUser.photoURL;
+        }
+
+        // Save user profile to Firestore for email-based lookups
+        try {
+          await saveUserProfile(firebaseUser.uid, profile);
+        } catch (error) {
+          console.warn("Failed to save user profile:", error);
+        }
       } else {
         setUser(null);
         localStorage.removeItem(UID_KEY);
@@ -129,7 +145,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signUpWithEmail = useCallback(async (email: string, password: string, name: string) => {
     setAuthError(null);
     try {
-      await firebaseSignUpWithEmail(email, password, name);
+      const createdUser = await firebaseSignUpWithEmail(email, password, name);
+      await saveUserProfile(createdUser.uid, {
+        email: createdUser.email || email,
+        displayName: name,
+      });
     } catch (error) {
       setAuthError(getAuthErrorMessage(error));
       throw error;
@@ -175,8 +195,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await firebaseLogOut();
       localStorage.removeItem(UID_KEY);
-      localStorage.removeItem("finflow_state");
-      localStorage.removeItem("finflow_migrated");
+      // NOTE: We no longer clear finflow_state / finflow_trips here.
+      // Data is now per-user keyed by UID, so each account's data is isolated.
     } catch (error) {
       setAuthError(getAuthErrorMessage(error));
       throw error;
