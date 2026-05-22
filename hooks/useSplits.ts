@@ -19,30 +19,13 @@ import {
   findUserByEmail,
 } from "@/lib/firestore";
 
-const STORAGE_KEY_PREFIX = "finflow_splits";
-const OLD_STORAGE_KEY = "finflow_trips"; // Legacy key
+const SPLITS_KEY = "finflow_trips"; // Keep original key for backward compat
 const UID_KEY = "finflow_uid";
 
-function getStorageKey(uid: string | null): string {
-  return uid ? `${STORAGE_KEY_PREFIX}_${uid}` : OLD_STORAGE_KEY;
-}
-
-function loadLocalSplits(uid: string | null): SplitSession[] {
+function loadLocalSplits(): SplitSession[] {
   if (typeof window === "undefined") return [];
   try {
-    const key = getStorageKey(uid);
-    let raw = localStorage.getItem(key);
-
-    // Migrate from old key if needed
-    if (!raw && uid) {
-      const oldRaw = localStorage.getItem(OLD_STORAGE_KEY);
-      if (oldRaw) {
-        raw = oldRaw;
-        localStorage.setItem(key, oldRaw);
-        localStorage.removeItem(OLD_STORAGE_KEY);
-      }
-    }
-
+    const raw = localStorage.getItem(SPLITS_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
@@ -51,9 +34,9 @@ function loadLocalSplits(uid: string | null): SplitSession[] {
   }
 }
 
-function saveLocalSplits(uid: string | null, splits: SplitSession[]) {
+function saveLocalSplits(splits: SplitSession[]) {
   try {
-    localStorage.setItem(getStorageKey(uid), JSON.stringify(splits));
+    localStorage.setItem(SPLITS_KEY, JSON.stringify(splits));
   } catch {}
 }
 
@@ -148,41 +131,38 @@ export function useSplits() {
   // All splits combined (local + shared)
   const allSplits = [...splits, ...sharedSplits];
 
-  // Hydrate: Firestore-first, localStorage as fallback
+  // Hydrate: localStorage-first, Firestore as recovery fallback
   useEffect(() => {
     const init = async () => {
       const uid = user?.uid || localStorage.getItem(UID_KEY);
       uidRef.current = uid ?? null;
 
-      if (uid) {
-        // Try Firestore first for local splits
-        let localSplits: SplitSession[] = [];
+      // 1. Always try localStorage first — it's synchronous and always the freshest
+      const localSplits = loadLocalSplits();
+
+      if (localSplits.length > 0) {
+        setSplits(localSplits);
+        // Sync to Firestore as backup
+        if (uid) syncSplitsToFirestore(uid, localSplits);
+      } else if (uid) {
+        // 2. No local data — try recovering from Firestore
         try {
           const firestoreSplits = await loadSplitsFromFirestore(uid);
           if (firestoreSplits && firestoreSplits.length > 0) {
-            localSplits = firestoreSplits;
-            saveLocalSplits(uid, firestoreSplits);
+            setSplits(firestoreSplits);
+            saveLocalSplits(firestoreSplits); // Cache locally
           }
         } catch {}
+      }
 
-        // Fall back to localStorage if Firestore had nothing
-        if (localSplits.length === 0) {
-          localSplits = loadLocalSplits(uid);
-          if (localSplits.length > 0) {
-            syncSplitsToFirestore(uid, localSplits);
-          }
-        }
-
-        setSplits(localSplits);
-
-        // Load shared/collaborative splits
+      // Load shared/collaborative splits
+      if (uid) {
         try {
           const sharedIds = await loadUserSharedSplitIds(uid);
           const loadedShared: SplitSession[] = [];
           for (const splitId of sharedIds) {
             const shared = await loadSharedSplit(splitId);
             if (shared) {
-              // Only accepted members see the shared split in their list.
               const userMember = shared.members.find((m) => m.uid === uid);
               if (userMember?.status === "accepted") {
                 loadedShared.push(shared);
@@ -191,13 +171,9 @@ export function useSplits() {
           }
           setSharedSplits(loadedShared);
         } catch {}
-
-        setHydrated(true);
-      } else {
-        const localSplits = loadLocalSplits(null);
-        setSplits(localSplits);
-        setHydrated(true);
       }
+
+      setHydrated(true);
     };
     init();
   }, [user?.uid]);
@@ -207,7 +183,7 @@ export function useSplits() {
     setSplits((prev) => {
       const next = updater(prev);
       const uid = uidRef.current || localStorage.getItem(UID_KEY);
-      saveLocalSplits(uid, next);
+      saveLocalSplits(next);
       if (uid) syncSplitsToFirestore(uid, next);
       return next;
     });
@@ -638,7 +614,7 @@ export function useSplits() {
         const next = splits.filter((t) => t.id !== splitId);
         setSplits(next);
         const uid = uidRef.current || localStorage.getItem(UID_KEY);
-        saveLocalSplits(uid, next);
+        saveLocalSplits(next);
         if (uid) {
           await syncSplitsToFirestoreImmediate(uid, next);
         }

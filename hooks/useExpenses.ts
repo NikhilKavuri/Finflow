@@ -6,17 +6,8 @@ import type { AppState, Transaction, Bank, PaymentMethodConfig } from "@/lib/typ
 import { getTodayISO } from "@/lib/utils";
 import { syncExpensesToFirestore, loadExpensesFromFirestore } from "@/lib/firestore";
 
-const STORAGE_KEY_PREFIX = "finflow_state";
-const OLD_STORAGE_KEY = "finflow_state"; // Legacy non-keyed key
+const STORAGE_KEY = "finflow_state";
 const UID_KEY = "finflow_uid";
-const MIGRATED_KEY_PREFIX = "finflow_migrated";
-
-function getStorageKey(uid: string | null): string {
-  return uid ? `${STORAGE_KEY_PREFIX}_${uid}` : OLD_STORAGE_KEY;
-}
-function getMigratedKey(uid: string): string {
-  return `${MIGRATED_KEY_PREFIX}_${uid}`;
-}
 
 const DEFAULT_PAYMENT_METHODS: PaymentMethodConfig[] = [
   { id: "pm_card", name: "Credit Card", type: "credit_card", emoji: "💳", billingCycleStart: 15, paymentDueDay: 5 },
@@ -94,23 +85,10 @@ function getBankBalanceDelta(
   return tx.type === "expense" ? -tx.amount : tx.amount;
 }
 
-function loadState(uid: string | null): AppState {
+function loadState(): AppState {
   if (typeof window === "undefined") return DEFAULT_STATE;
   try {
-    const key = getStorageKey(uid);
-    let raw = localStorage.getItem(key);
-    
-    // If per-user key has no data but old key does, migrate
-    if (!raw && uid) {
-      const oldRaw = localStorage.getItem(OLD_STORAGE_KEY);
-      if (oldRaw) {
-        raw = oldRaw;
-        // Save to per-user key and remove old key
-        localStorage.setItem(key, oldRaw);
-        localStorage.removeItem(OLD_STORAGE_KEY);
-      }
-    }
-    
+    const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_STATE;
     const parsed = { ...DEFAULT_STATE, ...JSON.parse(raw) };
     return {
@@ -136,9 +114,9 @@ function loadState(uid: string | null): AppState {
   }
 }
 
-function saveState(uid: string | null, state: AppState) {
+function saveState(state: AppState) {
   try {
-    localStorage.setItem(getStorageKey(uid), JSON.stringify(state));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch {}
 }
 
@@ -148,16 +126,26 @@ export function useExpenses() {
   const [hydrated, setHydrated] = useState(false);
   const uidRef = useRef<string | null>(null);
 
-  // Hydrate: Firestore-first, localStorage as fallback
+  // Hydrate: localStorage-first, Firestore as recovery fallback
   useEffect(() => {
     const init = async () => {
       const uid = user?.uid || localStorage.getItem(UID_KEY);
-      if (uid) {
-        uidRef.current = uid;
+      if (uid) uidRef.current = uid;
+
+      // 1. Always try localStorage first — it's synchronous and always the freshest
+      const localState = loadState();
+      const hasLocalData = localState.onboarded;
+
+      if (hasLocalData) {
+        setState(localState);
+        setHydrated(true);
+        // Sync to Firestore as backup
+        if (uid) syncExpensesToFirestore(uid, localState);
+        return;
       }
 
+      // 2. No local data — try recovering from Firestore (new device / cleared cache)
       if (uid) {
-        // Always try Firestore first when we have a UID
         try {
           const firestoreState = await loadExpensesFromFirestore(uid);
           if (firestoreState && firestoreState.onboarded) {
@@ -170,33 +158,18 @@ export function useExpenses() {
               paymentMethods: normalizePaymentMethods(firestoreState.paymentMethods),
             };
             setState(restoredState);
-            saveState(uid, restoredState); // Cache locally for next load
+            saveState(restoredState); // Cache locally
             setHydrated(true);
             return;
           }
         } catch {
-          // Firestore failed — fall through to localStorage
+          // Firestore failed
         }
-
-        // Firestore had nothing — try localStorage
-        const localState = loadState(uid);
-        if (localState.onboarded && localState.transactions.length > 0) {
-          setState(localState);
-          setHydrated(true);
-          // Push local data to Firestore as backup
-          syncExpensesToFirestore(uid, localState);
-          return;
-        }
-
-        // No data anywhere — fresh start
-        setState(DEFAULT_STATE);
-        setHydrated(true);
-      } else {
-        // No uid (not logged in) — use localStorage with null key
-        const localState = loadState(null);
-        setState(localState);
-        setHydrated(true);
       }
+
+      // 3. No data anywhere — fresh start
+      setState(DEFAULT_STATE);
+      setHydrated(true);
     };
 
     init();
@@ -205,8 +178,8 @@ export function useExpenses() {
   const updateState = useCallback((updater: (prev: AppState) => AppState) => {
     setState((prev) => {
       const next = updater(prev);
+      saveState(next);
       const uid = uidRef.current || localStorage.getItem(UID_KEY);
-      saveState(uid, next);
       if (uid) syncExpensesToFirestore(uid, next);
       return next;
     });
