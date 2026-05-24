@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Search, Trash2, Pencil } from "lucide-react";
+import { useRouter } from "next/navigation";
 import type { Transaction, Bank } from "@/lib/types";
 import { getCategoryById, CATEGORIES } from "@/lib/categories";
 import { formatINR, formatDate, groupByDate } from "@/lib/utils";
@@ -26,6 +27,7 @@ export default function ViewExpensesDrawer({
   onEdit,
   onClearAll,
 }: Props) {
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const [selectedCatFilter, setSelectedCatFilter] = useState<string | null>(null);
 
@@ -41,7 +43,8 @@ export default function ViewExpensesDrawer({
     return result;
   }, [transactions, query, selectedCatFilter]);
 
-  const groups = groupByDate(filtered);
+  const slicedFiltered = useMemo(() => filtered.slice(0, 5), [filtered]);
+  const groups = groupByDate(slicedFiltered);
   const dates = Object.keys(groups).sort((a, b) => (a > b ? -1 : 1));
   const totalExpenses = filtered.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0);
   const totalIncome = filtered.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0);
@@ -226,6 +229,21 @@ export default function ViewExpensesDrawer({
                   </div>
                 ))}
               </div>
+
+              {filtered.length > 5 && (
+                <div className="mt-4 flex justify-center pb-4">
+                  <motion.button
+                    whileTap={{ scale: 0.96 }}
+                    onClick={() => {
+                      router.push("/expenses");
+                      onClose();
+                    }}
+                    className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl border border-[#8b6fff]/30 bg-[#6c47ff]/10 hover:bg-[#6c47ff]/20 text-xs font-bold text-[#8b6fff] transition-all"
+                  >
+                    View More →
+                  </motion.button>
+                </div>
+              )}
             </>
           )}
         </div>

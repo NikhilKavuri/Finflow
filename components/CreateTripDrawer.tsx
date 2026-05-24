@@ -11,7 +11,7 @@ interface Props {
     name: string,
     emoji: string,
     members: { name: string; avatar: string; email?: string }[]
-  ) => void;
+  ) => void | Promise<void>;
 }
 
 const EMOJI_OPTIONS = ["💰", "🍕", "🏠", "🎓", "🤝", "🚗", "🎉", "✈️", "⛺", "🎪", "🛒", "🌴"];
@@ -26,6 +26,7 @@ export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
     { name: "", avatar: "🤩", email: "" },
   ]);
   const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     setMembers((prev) => {
@@ -73,7 +74,7 @@ export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
     setMembers(members.map((m, i) => (i === index ? { ...m, [field]: value } : m)));
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!name.trim()) {
       setError("Give your split a name");
       return;
@@ -88,15 +89,23 @@ export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
       return;
     }
 
-    onSubmit(
-      name.trim(),
-      emoji,
-      validMembers.map((m, index) => ({
-        name: index === 0 ? m.name.trim() || "You" : m.name.trim(),
-        avatar: m.avatar,
-        email: m.email?.trim() || undefined,
-      }))
-    );
+    setIsSubmitting(true);
+    setError("");
+    try {
+      await onSubmit(
+        name.trim(),
+        emoji,
+        validMembers.map((m, index) => ({
+          name: index === 0 ? m.name.trim() || "You" : m.name.trim(),
+          avatar: m.avatar,
+          email: m.email?.trim() || undefined,
+        }))
+      );
+    } catch (err) {
+      console.error("Failed to create split:", err);
+      setError("Failed to create split. Please try again.");
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -107,7 +116,7 @@ export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        onClick={onClose}
+        onClick={isSubmitting ? undefined : onClose}
       />
 
       <motion.div
@@ -126,9 +135,10 @@ export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
           <div className="flex items-center justify-between mb-5">
             <h2 className="font-syne text-lg font-bold text-white">New Split</h2>
             <motion.button
-              whileTap={{ scale: 0.88 }}
-              onClick={onClose}
-              className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-[#9898aa]"
+              whileTap={isSubmitting ? undefined : { scale: 0.88 }}
+              onClick={isSubmitting ? undefined : onClose}
+              disabled={isSubmitting}
+              className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-[#9898aa] disabled:opacity-50"
             >
               <X size={16} />
             </motion.button>
@@ -145,9 +155,10 @@ export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
               Split Name
             </label>
             <input
-              className="w-full bg-[#1e1e28] border border-white/10 rounded-xl px-4 py-3 text-base text-white placeholder-[#5a5a6e] outline-none focus:border-[#8b6fff] transition-colors"
+              className="w-full bg-[#1e1e28] border border-white/10 rounded-xl px-4 py-3 text-base text-white placeholder-[#5a5a6e] outline-none focus:border-[#8b6fff] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               placeholder="e.g. Roommates, Dinner, Road Trip..."
               value={name}
+              disabled={isSubmitting}
               onChange={(e) => {
                 setName(e.target.value);
                 setError("");
@@ -163,13 +174,14 @@ export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
               {EMOJI_OPTIONS.map((option) => (
                 <motion.button
                   key={option}
-                  whileTap={{ scale: 0.9 }}
-                  onClick={() => setEmoji(option)}
+                  whileTap={isSubmitting ? undefined : { scale: 0.9 }}
+                  onClick={isSubmitting ? undefined : () => setEmoji(option)}
+                  disabled={isSubmitting}
                   className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg border transition-all ${
                     emoji === option
                       ? "border-[#6c47ff] bg-[#6c47ff]/15 shadow-[0_0_12px_rgba(108,71,255,0.2)]"
                       : "border-white/[0.06] bg-[#1e1e28] hover:border-white/15"
-                  }`}
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
                 >
                   {option}
                 </motion.button>
@@ -183,9 +195,10 @@ export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
                 Members ({members.length})
               </label>
               <motion.button
-                whileTap={{ scale: 0.9 }}
-                onClick={addMember}
-                className="w-7 h-7 rounded-full bg-[#6c47ff]/20 flex items-center justify-center text-[#8b6fff]"
+                whileTap={isSubmitting ? undefined : { scale: 0.9 }}
+                onClick={isSubmitting ? undefined : addMember}
+                disabled={isSubmitting}
+                className="w-7 h-7 rounded-full bg-[#6c47ff]/20 flex items-center justify-center text-[#8b6fff] disabled:opacity-50"
               >
                 <Plus size={14} />
               </motion.button>
@@ -203,7 +216,8 @@ export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
                   >
                     <div className="relative group">
                       <button
-                        className="w-10 h-10 rounded-xl bg-[#252533] border border-white/[0.06] flex items-center justify-center text-lg hover:border-[#6c47ff]/40 transition-colors"
+                        className="w-10 h-10 rounded-xl bg-[#252533] border border-white/[0.06] flex items-center justify-center text-lg hover:border-[#6c47ff]/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled={isSubmitting}
                         onClick={() => {
                           const currentIdx = AVATAR_OPTIONS.indexOf(member.avatar);
                           const nextIdx = (currentIdx + 1) % AVATAR_OPTIONS.length;
@@ -215,11 +229,11 @@ export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
                     </div>
 
                     <input
-                      className="flex-1 min-w-0 bg-[#1e1e28] border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-[#5a5a6e] outline-none focus:border-[#8b6fff] disabled:opacity-70 transition-colors"
+                      className="flex-1 min-w-0 bg-[#1e1e28] border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-[#5a5a6e] outline-none focus:border-[#8b6fff] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       placeholder={index === 0 ? "You" : `Member ${index + 1} email`}
                       type={index === 0 ? "text" : "email"}
                       value={index === 0 ? member.name : member.email || ""}
-                      disabled={index === 0}
+                      disabled={index === 0 || isSubmitting}
                       onChange={(e) => {
                         updateMember(index, "email", e.target.value);
                         setError("");
@@ -228,9 +242,10 @@ export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
 
                     {members.length > 2 && index > 0 && (
                       <motion.button
-                        whileTap={{ scale: 0.9 }}
-                        onClick={() => removeMember(index)}
-                        className="w-8 h-8 rounded-full bg-red-500/10 flex items-center justify-center text-red-400"
+                        whileTap={isSubmitting ? undefined : { scale: 0.9 }}
+                        onClick={isSubmitting ? undefined : () => removeMember(index)}
+                        disabled={isSubmitting}
+                        className="w-8 h-8 rounded-full bg-red-500/10 flex items-center justify-center text-red-400 disabled:opacity-50"
                       >
                         <Trash2 size={13} />
                       </motion.button>
@@ -242,13 +257,24 @@ export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
           </div>
 
           <motion.button
-            whileTap={{ scale: 0.97 }}
-            whileHover={{ translateY: -1 }}
+            whileTap={isSubmitting ? undefined : { scale: 0.97 }}
+            whileHover={isSubmitting ? undefined : { translateY: -1 }}
             onClick={handleSubmit}
-            className="w-full py-4 rounded-2xl font-syne text-base font-bold text-white glow-accent transition-all"
+            disabled={isSubmitting}
+            className="w-full py-4 rounded-2xl font-syne text-base font-bold text-white glow-accent transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             style={{ background: "linear-gradient(135deg, #6c47ff, #8b6fff)" }}
           >
-            Create Split 💰
+            {isSubmitting ? (
+              <>
+                <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Creating Split...
+              </>
+            ) : (
+              "Create Split 💰"
+            )}
           </motion.button>
         </div>
       </motion.div>

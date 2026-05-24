@@ -159,16 +159,21 @@ export function useSplits() {
       if (uid) {
         try {
           const sharedIds = await loadUserSharedSplitIds(uid);
-          const loadedShared: SplitSession[] = [];
-          for (const splitId of sharedIds) {
-            const shared = await loadSharedSplit(splitId);
-            if (shared) {
-              const userMember = shared.members.find((m) => m.uid === uid);
-              if (userMember?.status === "accepted") {
-                loadedShared.push(shared);
+          const loadedSharedResult = await Promise.all(
+            sharedIds.map(async (splitId) => {
+              const shared = await loadSharedSplit(splitId);
+              if (shared) {
+                const userMember = shared.members.find((m) => m.uid === uid);
+                if (userMember?.status === "accepted") {
+                  return shared;
+                }
               }
-            }
-          }
+              return null;
+            })
+          );
+          const loadedShared = loadedSharedResult.filter(
+            (s): s is SplitSession => s !== null
+          );
           setSharedSplits(loadedShared);
         } catch {}
       }

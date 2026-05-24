@@ -11,11 +11,12 @@ interface Props {
   pct: number;
   editable?: boolean;
   onEditBudget: () => void;
+  onClick?: () => void;
 }
 
 const CIRC = 2 * Math.PI * 32;
 
-export default function BalanceCard({ balance, totalSpent, budget, pct, editable = true, onEditBudget }: Props) {
+export default function BalanceCard({ balance, totalSpent, budget, pct, editable = true, onEditBudget, onClick }: Props) {
   const ringRef = useRef<SVGCircleElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
 
@@ -39,7 +40,14 @@ export default function BalanceCard({ balance, totalSpent, budget, pct, editable
 
   return (
     <div
-      className="mx-0 my-4 rounded-3xl p-6 relative overflow-hidden border"
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      className={`mx-0 my-4 rounded-3xl p-6 relative overflow-hidden border ${
+        onClick
+          ? "cursor-pointer hover:border-[#6c47ff]/40 active:scale-[0.99] transition-all"
+          : ""
+      }`}
       style={{
         background: "linear-gradient(135deg,#1a1030 0%,#0d1525 50%,#0f1a10 100%)",
         borderColor: "rgba(108,71,255,0.2)",
@@ -61,7 +69,10 @@ export default function BalanceCard({ balance, totalSpent, budget, pct, editable
             {editable && (
               <button
                 type="button"
-                onClick={onEditBudget}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEditBudget();
+                }}
                 className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-[#9898aa] transition-colors hover:text-white"
                 aria-label="Edit budget"
               >

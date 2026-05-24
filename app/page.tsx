@@ -11,7 +11,6 @@ import type { Transaction } from "@/lib/types";
 import Onboarding from "@/components/Onboarding";
 import TopNav from "@/components/TopNav";
 import BankFilter from "@/components/BankFilter";
-import BalanceCard from "@/components/BalanceCard";
 import QuickStats from "@/components/QuickStats";
 import PaymentPlanCard from "@/components/PaymentPlanCard";
 import PaymentBreakdown from "@/components/PaymentBreakdown";
@@ -149,50 +148,23 @@ export default function HomePage() {
             onMonthChange={setSelectedMonth}
           />
 
-          <BankFilter
-            banks={state.banks}
-            selectedBankId={selectedBankId}
-            onBankChange={setSelectedBankId}
-          />
-
           <main className="flex-1 space-y-5 px-4 pb-6 pt-2">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
             >
-              <BalanceCard
-                balance={balance}
-                totalSpent={totalSpent}
+              <PaymentPlanCard
+                transactions={state.transactions}
+                paymentMethods={state.paymentMethods || []}
                 budget={effectiveBudget}
-                pct={pct}
-                editable={isCurrentMonth}
+                budgetCycleStartDay={state.budgetCycleStartDay}
+                selectedMonth={selectedMonth}
                 onEditBudget={() => setBudgetOpen(true)}
+                onManagePaymentMethods={() => setPaymentMethodsOpen(true)}
+                onClick={() => router.push("/overview")}
               />
             </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.1, ease: [0.4, 0, 0.2, 1] }}
-            >
-              <QuickStats totalIncome={totalIncome} dailyAvg={dailyAvg} />
-            </motion.div>
-
-            <PaymentPlanCard
-              transactions={state.transactions}
-              paymentMethods={state.paymentMethods || []}
-              budget={effectiveBudget}
-              budgetCycleStartDay={state.budgetCycleStartDay}
-              selectedMonth={selectedMonth}
-              onEditBudget={() => setBudgetOpen(true)}
-              onManagePaymentMethods={() => setPaymentMethodsOpen(true)}
-            />
-
-            <PaymentBreakdown
-              expenses={expenses}
-              paymentMethods={state.paymentMethods || []}
-            />
 
             <motion.div
               initial={{ opacity: 0, y: 20 }}

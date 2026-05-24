@@ -1,0 +1,338 @@
+"use client";
+
+import { useMemo, useState, useEffect } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { useRouter } from "next/navigation";
+import { Search, Trash2, Pencil, Receipt, Sparkles } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { useExpenses } from "@/hooks/useExpenses";
+import { getCategoryById, CATEGORIES } from "@/lib/categories";
+import { formatINR, formatDate, groupByDate } from "@/lib/utils";
+import type { Transaction } from "@/lib/types";
+
+import BottomNav from "@/components/BottomNav";
+import ExpenseDrawer from "@/components/ExpenseDrawer";
+import Toast from "@/components/Toast";
+import PageLoader, { DashboardSkeleton } from "@/components/PageLoader";
+
+export default function ExpensesPage() {
+  const router = useRouter();
+  const { user, loading } = useAuth();
+  const {
+    state,
+    hydrated,
+    addTransaction,
+    editTransaction,
+    deleteTransaction,
+    clearAll,
+  } = useExpenses();
+
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [selectedCatFilter, setSelectedCatFilter] = useState<string | null>(null);
+
+  // Auth gate: redirect to login if not authenticated
+  useEffect(() => {
+    if (!loading && !user) {
+      router.replace("/login");
+    }
+  }, [user, loading, router]);
+
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2600);
+  };
+
+  const filtered = useMemo(() => {
+    let result = state.transactions;
+    if (selectedCatFilter) {
+      result = result.filter((t) => t.category === selectedCatFilter);
+    }
+    const trimmed = query.trim().toLowerCase();
+    if (trimmed) {
+      result = result.filter((t) => t.name.toLowerCase().includes(trimmed));
+    }
+    return result;
+  }, [state.transactions, query, selectedCatFilter]);
+
+  const groups = groupByDate(filtered);
+  const dates = Object.keys(groups).sort((a, b) => (a > b ? -1 : 1));
+
+  const totalExpenses = useMemo(() => 
+    filtered.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0),
+    [filtered]
+  );
+  
+  const totalIncome = useMemo(() => 
+    filtered.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0),
+    [filtered]
+  );
+
+  // Get unique categories from transactions
+  const activeCats = useMemo(() => {
+    const catIds = new Set(state.transactions.map((t) => t.category));
+    return CATEGORIES.filter((c) => catIds.has(c.id));
+  }, [state.transactions]);
+
+  // Handle edit: open drawer with transaction data
+  const handleEditTransaction = (tx: Transaction) => {
+    setEditingTransaction(tx);
+    setDrawerOpen(true);
+  };
+
+  // Show loader while auth or data is loading
+  if (loading) return <PageLoader message="Signing you in..." />;
+  if (!user) return null;
+  if (!hydrated) return <DashboardSkeleton />;
+
+  return (
+    <div className="app-screen mx-auto flex w-full max-w-[480px] flex-col overflow-x-hidden pb-24">
+      {/* Header */}
+      <nav className="sticky top-0 z-30 px-5 py-4 glass-nav border-b border-white/[0.06]">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Receipt size={20} className="text-[#8b6fff]" />
+            <span className="font-syne text-xl font-black gradient-text">Expenses</span>
+          </div>
+          <span className="text-xs font-semibold text-[#5a5a6e] flex items-center gap-1 bg-white/[0.03] border border-white/[0.06] px-2.5 py-1 rounded-full">
+            <Sparkles size={11} className="text-yellow-400" />
+            {state.transactions.length} total
+          </span>
+        </div>
+
+        {/* Search */}
+        {state.transactions.length > 0 && (
+          <div className="relative">
+            <Search
+              size={14}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-[#5a5a6e]"
+            />
+            <input
+              type="text"
+              placeholder="Search transactions..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="w-full bg-[#1e1e28] border border-white/[0.06] rounded-xl pl-9 pr-3 py-2.5 text-sm text-white placeholder-[#5a5a6e] outline-none focus:border-[#8b6fff]/40 transition-colors"
+            />
+          </div>
+        )}
+      </nav>
+
+      <main className="flex-1 px-4 pt-4 space-y-4">
+        {state.transactions.length > 0 && (
+          <>
+            {/* Quick Metrics */}
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4 }}
+              className="grid grid-cols-2 gap-3"
+            >
+              <div className="px-4 py-3 rounded-2xl bg-[#ff4f6b]/10 border border-[#ff4f6b]/15 shadow-sm">
+                <div className="text-[10px] font-semibold text-[#ff4f6b]/60 uppercase tracking-widest mb-0.5">Total Spent</div>
+                <div className="font-syne text-lg font-bold text-[#ff4f6b]">{formatINR(totalExpenses)}</div>
+              </div>
+              <div className="px-4 py-3 rounded-2xl bg-[#2ce88a]/10 border border-[#2ce88a]/15 shadow-sm">
+                <div className="text-[10px] font-semibold text-[#2ce88a]/60 uppercase tracking-widest mb-0.5">Total Income</div>
+                <div className="font-syne text-lg font-bold text-[#2ce88a]">{formatINR(totalIncome)}</div>
+              </div>
+            </motion.div>
+
+            {/* Category horizontal scrolling filters */}
+            {activeCats.length > 1 && (
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.1 }}
+                className="flex gap-1.5 overflow-x-auto pb-1 hide-scrollbar"
+              >
+                <button
+                  onClick={() => setSelectedCatFilter(null)}
+                  className={`flex items-center gap-1 px-3 py-2 rounded-xl text-[10px] font-bold whitespace-nowrap flex-shrink-0 border transition-all ${
+                    !selectedCatFilter
+                      ? "border-[#8b6fff]/40 bg-[#6c47ff]/15 text-[#8b6fff]"
+                      : "border-white/[0.06] bg-[#1e1e28] text-[#5a5a6e] hover:border-white/10"
+                  }`}
+                >
+                  All Categories
+                </button>
+                {activeCats.map((cat) => (
+                  <button
+                    key={cat.id}
+                    onClick={() => setSelectedCatFilter(selectedCatFilter === cat.id ? null : cat.id)}
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-bold whitespace-nowrap flex-shrink-0 border transition-all ${
+                      selectedCatFilter === cat.id
+                        ? "border-[#8b6fff]/40 bg-[#6c47ff]/15 text-[#8b6fff]"
+                        : "border-white/[0.06] bg-[#1e1e28] text-[#5a5a6e] hover:border-white/10"
+                    }`}
+                  >
+                    <span>{cat.emoji}</span>
+                    <span>{cat.name}</span>
+                  </button>
+                ))}
+              </motion.div>
+            )}
+          </>
+        )}
+
+        {/* Transactions List */}
+        <div className="space-y-4">
+          {filtered.length === 0 ? (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="flex flex-col items-center justify-center text-center py-16"
+            >
+              <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-[#6c47ff]/20 to-[#8b6fff]/10 flex items-center justify-center text-3xl mb-4">
+                🧾
+              </div>
+              <h3 className="font-syne text-lg font-bold text-white mb-2">
+                {state.transactions.length === 0 ? "No transactions yet" : "No matching results"}
+              </h3>
+              <p className="text-sm text-[#5a5a6e] max-w-[240px] mb-6">
+                {state.transactions.length === 0 
+                  ? "Log your first expense or income by tapping the floating '+' button at the bottom right."
+                  : "Try adjusting your filters or search keywords to find what you are looking for."}
+              </p>
+              {state.transactions.length === 0 && (
+                <motion.button
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => setDrawerOpen(true)}
+                  className="px-6 py-3 rounded-2xl font-syne text-sm font-bold text-white glow-accent"
+                  style={{ background: "linear-gradient(135deg, #6c47ff, #8b6fff)" }}
+                >
+                  Log Your First Expense 💰
+                </motion.button>
+              )}
+            </motion.div>
+          ) : (
+            <div className="flex flex-col gap-4">
+              <div className="flex justify-between items-center px-1">
+                <span className="text-[11px] font-bold text-[#5a5a6e] tracking-widest uppercase">
+                  History
+                </span>
+                <button
+                  onClick={() => {
+                    if (confirm("Are you sure you want to clear all transactions? This cannot be undone.")) {
+                      clearAll();
+                      showToast("All transactions cleared");
+                    }
+                  }}
+                  className="text-[10px] font-bold text-[#5a5a6e] hover:text-[#ff4f6b] transition-colors"
+                >
+                  Clear All
+                </button>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                {dates.map((date) => (
+                  <div key={date} className="space-y-1.5">
+                    <div className="text-[10px] font-bold text-[#5a5a6e] tracking-widest uppercase pl-1">
+                      {formatDate(date)}
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      {groups[date].map((tx, i) => {
+                        const cat = getCategoryById(tx.category);
+                        const bank = state.banks.find((b) => b.id === tx.bankId);
+                        return (
+                          <motion.div
+                            key={tx.id}
+                            layout
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.25, delay: i * 0.01 }}
+                            className="group flex items-center gap-3 px-3.5 py-3 bg-[#1e1e28] border border-white/[0.04] rounded-2xl hover:bg-[#252533] hover:border-white/[0.08] transition-all"
+                          >
+                            <div
+                              className="w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0 shadow-inner"
+                              style={{ background: cat.color + "18" }}
+                            >
+                              {cat.emoji}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-semibold text-white truncate">
+                                {tx.name}
+                              </div>
+                              <div className="text-[10px] text-[#5a5a6e] mt-1 flex items-center gap-1.5 flex-wrap">
+                                <span>{cat.name}</span>
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-white/[0.03] border border-white/[0.06] text-[8px] font-bold text-[#9898aa]">
+                                  🏦 {bank?.name || "Default Bank"}
+                                </span>
+                              </div>
+                            </div>
+                            <div className={`font-syne text-sm font-black flex-shrink-0 ${tx.type === "income" ? "text-[#2ce88a]" : "text-[#ff4f6b]"}`}>
+                              {tx.type === "income" ? "+" : "-"}{formatINR(tx.amount)}
+                            </div>
+                            
+                            {/* Action Buttons */}
+                            <div className="flex items-center gap-1 ml-1">
+                              <motion.button
+                                whileTap={{ scale: 0.85 }}
+                                onClick={() => handleEditTransaction(tx)}
+                                className="opacity-60 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity w-7 h-7 rounded-xl flex items-center justify-center text-[#8b6fff] hover:bg-[#6c47ff]/10"
+                                style={{ background: "rgba(108,71,255,0.06)" }}
+                                aria-label="Edit"
+                              >
+                                <Pencil size={11} />
+                              </motion.button>
+                              <motion.button
+                                whileTap={{ scale: 0.85 }}
+                                onClick={() => {
+                                  if (confirm(`Delete "${tx.name}"?`)) {
+                                    deleteTransaction(tx.id);
+                                    showToast("Transaction deleted");
+                                  }
+                                }}
+                                className="opacity-60 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity w-7 h-7 rounded-xl flex items-center justify-center text-[#ff4f6b] hover:bg-[#ff4f6b]/10"
+                                style={{ background: "rgba(255,79,107,0.06)" }}
+                                aria-label="Delete"
+                              >
+                                <Trash2 size={11} />
+                              </motion.button>
+                            </div>
+                          </motion.div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </main>
+
+      <BottomNav onAddClick={() => setDrawerOpen(true)} />
+
+      <AnimatePresence>
+        {drawerOpen && (
+          <ExpenseDrawer
+            banks={state.banks}
+            paymentMethods={state.paymentMethods || []}
+            editingTransaction={editingTransaction}
+            onClose={() => {
+              setDrawerOpen(false);
+              setEditingTransaction(null);
+            }}
+            onSubmit={(data) => {
+              addTransaction(data);
+              setDrawerOpen(false);
+              setEditingTransaction(null);
+              showToast("Expense logged");
+            }}
+            onEdit={(id, data) => {
+              editTransaction(id, data);
+              setDrawerOpen(false);
+              setEditingTransaction(null);
+              showToast("Expense updated");
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>{toast && <Toast message={toast} />}</AnimatePresence>
+    </div>
+  );
+}

@@ -15,6 +15,7 @@ interface Props {
   selectedMonth: string;
   onEditBudget: () => void;
   onManagePaymentMethods: () => void;
+  onClick?: () => void;
 }
 
 function formatShortDate(date: string): string {
@@ -32,6 +33,7 @@ export default function PaymentPlanCard({
   selectedMonth,
   onEditBudget,
   onManagePaymentMethods,
+  onClick,
 }: Props) {
   const plan = useMemo(
     () =>
@@ -52,10 +54,16 @@ export default function PaymentPlanCard({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, delay: 0.15 }}
-      className="mb-4 rounded-2xl border border-white/[0.06] bg-[#1a1a24] p-4"
+      whileTap={onClick ? { scale: 0.98 } : undefined}
+      whileHover={onClick ? { translateY: -1 } : undefined}
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      className={`mb-4 rounded-2xl border bg-[#1a1a24] p-4 transition-all ${
+        onClick
+          ? "cursor-pointer hover:border-white/10 active:scale-[0.99] border-white/[0.06]"
+          : "border-white/[0.06]"
+      }`}
     >
       <div className="mb-4 flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -65,7 +73,10 @@ export default function PaymentPlanCard({
           </div>
           <button
             type="button"
-            onClick={onEditBudget}
+            onClick={(e) => {
+              e.stopPropagation();
+              onEditBudget();
+            }}
             className="mt-1 flex items-center gap-1.5 text-left text-[11px] font-semibold text-[#8b6fff] transition-colors hover:text-white"
           >
             <CalendarDays size={12} />
@@ -75,7 +86,10 @@ export default function PaymentPlanCard({
         </div>
         <button
           type="button"
-          onClick={onManagePaymentMethods}
+          onClick={(e) => {
+            e.stopPropagation();
+            onManagePaymentMethods();
+          }}
           className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-[#9898aa] transition-colors hover:text-white"
           aria-label="Manage payment methods"
         >
