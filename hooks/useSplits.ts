@@ -379,8 +379,8 @@ export function useSplits() {
         const split = sharedSplits.find((s) => s.id === splitId);
         const uid = uidRef.current;
         if (split && uid) {
-          const firstContributor = getExpenseContributions(expense)[0];
-          const payer = split.members.find((m) => m.id === (firstContributor?.memberId || expense.paidBy));
+          const firstContributor = getExpenseContributions(newExpense)[0];
+          const payer = split.members.find((m) => m.id === (firstContributor?.memberId || newExpense.paidBy));
           for (const member of split.members) {
             if (member.uid && member.uid !== uid && member.status === "accepted") {
               addNotification(member.uid, {
@@ -390,7 +390,7 @@ export function useSplits() {
                 splitEmoji: split.emoji,
                 fromUid: uid,
                 fromName: payer?.name || "Someone",
-                message: `${payer?.name || "Someone"} added "${expense.description}" (₹${expense.amount})`,
+                message: `${payer?.name || "Someone"} added "${newExpense.description}" (₹${newExpense.amount})`,
                 createdAt: new Date().toISOString(),
                 read: false,
               }).catch(() => {});
