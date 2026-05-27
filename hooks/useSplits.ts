@@ -48,6 +48,15 @@ export interface BalanceEntry {
   amount: number;
 }
 
+function getExpenseContributions(exp: SplitExpense): { memberId: string; amount: number }[] {
+  if (exp.contributors && exp.contributors.length > 0) {
+    return exp.contributors
+      .map((c) => ({ memberId: c.memberId, amount: c.amount }))
+      .filter((c) => c.memberId && Number.isFinite(c.amount) && c.amount > 0);
+  }
+  return exp.paidBy ? [{ memberId: exp.paidBy, amount: exp.amount }] : [];
+}
+
 /**
  * Calculate simplified debts for a split.
  * Returns a list of "A owes B ₹X" entries, minimized.
@@ -61,7 +70,9 @@ export function calculateBalances(split: SplitSession): BalanceEntry[] {
     const splitCount = exp.splitAmong.length;
     if (splitCount === 0) continue;
     const share = exp.amount / splitCount;
-    net[exp.paidBy] = (net[exp.paidBy] || 0) + exp.amount;
+    for (const c of getExpenseContributions(exp)) {
+      net[c.memberId] = (net[c.memberId] || 0) + c.amount;
+    }
     for (const memberId of exp.splitAmong) {
       net[memberId] = (net[memberId] || 0) - share;
     }
@@ -114,7 +125,12 @@ export function getMemberSpending(split: SplitSession): Record<string, number> {
   const spending: Record<string, number> = {};
   split.members.forEach((m) => (spending[m.id] = 0));
   for (const exp of split.expenses) {
-    spending[exp.paidBy] = (spending[exp.paidBy] || 0) + exp.amount;
+    const contribs = getExpenseContributions(exp);
+    if (contribs.length > 0) {
+      for (const c of contribs) {
+        spending[c.memberId] = (spending[c.memberId] || 0) + c.amount;
+      }
+    }
   }
   return spending;
 }
@@ -363,7 +379,8 @@ export function useSplits() {
         const split = sharedSplits.find((s) => s.id === splitId);
         const uid = uidRef.current;
         if (split && uid) {
-          const payer = split.members.find((m) => m.id === expense.paidBy);
+          const firstContributor = getExpenseContributions(expense)[0];
+          const payer = split.members.find((m) => m.id === (firstContributor?.memberId || expense.paidBy));
           for (const member of split.members) {
             if (member.uid && member.uid !== uid && member.status === "accepted") {
               addNotification(member.uid, {
@@ -514,7 +531,10 @@ export function useSplits() {
     (splitId: string, memberId: string) => {
       const doRemove = (s: SplitSession): SplitSession => {
         const involved = s.expenses.some(
-          (e) => e.paidBy === memberId || e.splitAmong.includes(memberId)
+          (e) =>
+            e.paidBy === memberId ||
+            (e.contributors?.some((c) => c.memberId === memberId) ?? false) ||
+            e.splitAmong.includes(memberId)
         );
         if (involved) return s;
         return { ...s, members: s.members.filter((m) => m.id !== memberId) };

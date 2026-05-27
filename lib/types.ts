@@ -59,10 +59,16 @@ export interface SplitExpense {
   id: string;
   description: string;
   amount: number;
-  paidBy: string;       // member id
+  paidBy: string;       // legacy: member id (fallback when contributors not set)
+  contributors?: SplitContribution[]; // optional multi-contributor support
   splitAmong: string[]; // member ids (equal split)
   date: string;         // ISO date
   category?: string;
+}
+
+export interface SplitContribution {
+  memberId: string; // member id
+  amount: number;   // contributed amount
 }
 
 export interface SplitSettlement {

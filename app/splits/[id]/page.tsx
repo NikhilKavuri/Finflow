@@ -20,7 +20,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { formatINR, formatDate } from "@/lib/utils";
 import BottomNav from "@/components/BottomNav";
 import BalanceChart from "@/components/BalanceChart";
-import TripExpenseDrawer from "@/components/TripExpenseDrawer";
+import TripExpenseDrawer from "@/components/SplitExpenseDrawer";
 import EditMemberModal from "@/components/EditMemberModal";
 import EditTitleModal from "@/components/EditTitleModal";
 import Toast from "@/components/Toast";
@@ -373,17 +373,32 @@ export default function TripDetailPage() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {trip.expenses.map((expense, i) => {
-                    const payer = trip.members.find((m) => m.id === expense.paidBy);
+                  {trip.expenses.map((expense) => {
+                    const contributors =
+                      expense.contributors && expense.contributors.length > 0
+                        ? expense.contributors
+                        : [{ memberId: expense.paidBy, amount: expense.amount }];
+                    const contributorMembers = contributors
+                      .map((c) => trip.members.find((m) => m.id === c.memberId))
+                      .filter(Boolean);
+                    const contributorIds = new Set(contributors.map((c) => c.memberId));
+                    const primaryContributor = contributorMembers[0];
                     const splitCount = expense.splitAmong.length;
                     const perPerson = splitCount > 0 ? expense.amount / splitCount : 0;
-                    // Members who owe (everyone in splitAmong except the payer)
+                    // Members who owe (everyone in splitAmong except contributors)
                     const owingMembers = expense.splitAmong
-                      .filter((id) => id !== expense.paidBy)
+                      .filter((id) => !contributorIds.has(id))
                       .map((id) => trip.members.find((m) => m.id === id))
                       .filter(Boolean);
-                    // Does the payer owe themselves a share?
-                    const payerInSplit = expense.splitAmong.includes(expense.paidBy);
+                    const contributorsInSplit = contributorMembers.filter((m) =>
+                      expense.splitAmong.includes(m!.id)
+                    );
+                    const paidByLabel =
+                      contributorMembers.length === 0
+                        ? "Someone"
+                        : contributorMembers.length === 1
+                          ? contributorMembers[0]!.name
+                          : `${contributorMembers[0]!.name} + ${contributorMembers.length - 1}`;
 
                     return (
                         <div
@@ -391,7 +406,7 @@ export default function TripDetailPage() {
                           className="flex items-center gap-3"
                         >
                           <div className="w-9 h-9 rounded-lg bg-[#6c47ff]/15 flex items-center justify-center text-sm flex-shrink-0">
-                            {payer?.avatar || "👤"}
+                            {primaryContributor?.avatar || "👤"}
                           </div>
 
                           <div className="flex-1 min-w-0">
@@ -407,7 +422,7 @@ export default function TripDetailPage() {
                               <span className="text-[11px] text-[#5a5a6e]">
                                 Paid by{" "}
                                 <span className="text-[#9898aa] font-medium">
-                                  {payer?.name}
+                                  {paidByLabel}
                                 </span>
                                 {" · "}
                                 {formatDate(expense.date)}
@@ -436,17 +451,17 @@ export default function TripDetailPage() {
                                     </span>
                                   </div>
                                 ))}
-                                {payerInSplit && payer && (
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="text-[10px]">{payer.avatar}</span>
+                                {contributorsInSplit.map((m) => (
+                                  <div key={m!.id} className="flex items-center gap-1.5">
+                                    <span className="text-[10px]">{m!.avatar}</span>
                                     <span className="text-[10px] text-[#9898aa] font-medium">
-                                      {payer.name}
+                                      {m!.name}
                                     </span>
                                     <span className="text-[10px] text-[#2ce88a] ml-auto font-semibold">
                                       self · {formatINR(perPerson)}
                                     </span>
                                   </div>
-                                )}
+                                ))}
                               </div>
                             </div>
                           </div>

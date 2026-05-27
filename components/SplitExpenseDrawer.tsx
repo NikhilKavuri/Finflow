@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { CalendarDays, X, ChevronDown, ChevronLeft, ChevronRight, Check } from "lucide-react";
+import { CalendarDays, X, ChevronLeft, ChevronRight, Plus, Trash2, Check, ChevronDown } from "lucide-react";
 import type { TripMember, TripExpense } from "@/lib/types";
 import { formatDate, formatMonthLabel, getCurrentMonthPrefix, getDaysInMonth, getTodayISO } from "@/lib/utils";
 
@@ -18,11 +18,21 @@ export default function TripExpenseDrawer({ members, onClose, onSubmit, initialE
   const [amount, setAmount] = useState(initialExpense?.amount.toString() || "");
   const [date, setDate] = useState(initialExpense?.date || getTodayISO());
   const [displayedMonth, setDisplayedMonth] = useState((initialExpense?.date || getTodayISO()).slice(0, 7));
-  const [paidBy, setPaidBy] = useState(initialExpense?.paidBy || members[0]?.id || "");
+  const [contributors, setContributors] = useState<{ memberId: string; amount: string }[]>(() => {
+    const initialAmount = initialExpense?.amount?.toString() || "";
+    if (initialExpense?.contributors && initialExpense.contributors.length > 0) {
+      return initialExpense.contributors.map((c) => ({
+        memberId: c.memberId,
+        amount: c.amount.toString(),
+      }));
+    }
+    const fallbackMember = initialExpense?.paidBy || members[0]?.id || "";
+    return [{ memberId: fallbackMember, amount: initialAmount }];
+  });
   const [splitAmong, setSplitAmong] = useState<string[]>(initialExpense?.splitAmong || members.map((m) => m.id));
-  const [paidByOpen, setPaidByOpen] = useState(false);
   const [error, setError] = useState("");
-  const paidByRef = useRef<HTMLDivElement>(null);
+  const [contributorPickerOpenIdx, setContributorPickerOpenIdx] = useState<number | null>(null);
+  const contributorPickerRootRef = useRef<HTMLDivElement>(null);
   const today = getTodayISO();
   const currentMonth = getCurrentMonthPrefix();
   const currentDay = Number(today.slice(8, 10));
@@ -32,7 +42,11 @@ export default function TripExpenseDrawer({ members, onClose, onSubmit, initialE
   const monthDays = Array.from({ length: selectableDayCount }, (_, index) => selectableDayCount - index);
   const canGoNextMonth = displayedMonth < currentMonth;
 
-  const payer = members.find((m) => m.id === paidBy);
+  const contributorTotal = contributors.reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0);
+  const contributorsValid =
+    contributors.length > 0 &&
+    contributors.every((c) => c.memberId && (parseFloat(c.amount) || 0) > 0) &&
+    new Set(contributors.map((c) => c.memberId)).size === contributors.length;
 
   const shiftMonth = (delta: number) => {
     const [year, month] = displayedMonth.split("-").map(Number);
@@ -48,16 +62,26 @@ export default function TripExpenseDrawer({ members, onClose, onSubmit, initialE
   };
 
   useEffect(() => {
+    if (!initialExpense) return;
+    // If members list changes and a contributor disappears, keep the row but blank the memberId.
+    setContributors((prev) =>
+      prev.map((c) => (members.some((m) => m.id === c.memberId) ? c : { ...c, memberId: "" }))
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [members.length]);
+
+  useEffect(() => {
+    if (contributorPickerOpenIdx === null) return;
     const handleClickOutside = (event: MouseEvent) => {
-      if (paidByRef.current && !paidByRef.current.contains(event.target as Node)) {
-        setPaidByOpen(false);
-      }
+      const root = contributorPickerRootRef.current;
+      if (!root) return;
+      const target = event.target as Node;
+      if (root.contains(target)) return;
+      setContributorPickerOpenIdx(null);
     };
-    if (paidByOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-      return () => document.removeEventListener("mousedown", handleClickOutside);
-    }
-  }, [paidByOpen]);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [contributorPickerOpenIdx]);
 
   const toggleSplit = (memberId: string) => {
     setSplitAmong((prev) => {
@@ -79,14 +103,31 @@ export default function TripExpenseDrawer({ members, onClose, onSubmit, initialE
       setError("Enter a valid amount");
       return;
     }
+    if (!contributorsValid) {
+      setError("Add contributors with unique people and valid amounts");
+      return;
+    }
+    const roundedContrib = Math.round(contributorTotal * 100) / 100;
+    const roundedAmt = Math.round(amt * 100) / 100;
+    if (Math.abs(roundedContrib - roundedAmt) > 0.01) {
+      setError("Contributions must add up to the expense amount");
+      return;
+    }
     if (splitAmong.length === 0) {
       setError("Select at least one person to split with");
       return;
     }
+
+    const contributorsPayload = contributors.map((c) => ({
+      memberId: c.memberId,
+      amount: parseFloat(c.amount),
+    }));
+    const paidBy = contributorsPayload[0]?.memberId || members[0]?.id || "";
     onSubmit({
       description: description.trim(),
       amount: amt,
       paidBy,
+      contributors: contributorsPayload,
       splitAmong,
       date,
     });
@@ -245,72 +286,156 @@ export default function TripExpenseDrawer({ members, onClose, onSubmit, initialE
         </div>
 
         {/* Paid By */}
-        <div className="mb-4 relative" ref={paidByRef}>
+        <div className="mb-4" ref={contributorPickerRootRef}>
           <label className="block text-[11px] font-semibold text-[#5a5a6e] tracking-widest uppercase mb-2">
-            Paid By
+            Contributors
           </label>
-          <motion.button
-            type="button"
-            onClick={() => setPaidByOpen((v) => !v)}
-            whileTap={{ scale: 0.98 }}
-            className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left transition-all duration-300 ${
-              paidByOpen
-                ? "border-[#8b6fff]/60 bg-[#1e1e28] shadow-[0_0_20px_rgba(108,71,255,0.12)]"
-                : "border-white/10 bg-[#1e1e28] hover:border-white/20"
-            }`}
-          >
-            <div className="w-8 h-8 rounded-lg bg-[#6c47ff]/15 flex items-center justify-center text-sm">
-              {payer?.avatar}
-            </div>
-            <span className="flex-1 text-base text-white font-medium">
-              {payer?.name || "Select person"}
-            </span>
-            <motion.div
-              animate={{ rotate: paidByOpen ? 180 : 0 }}
-              transition={{ duration: 0.2 }}
-            >
-              <ChevronDown size={18} className="text-[#5a5a6e]" />
-            </motion.div>
-          </motion.button>
 
-          <AnimatePresence>
-            {paidByOpen && (
-              <motion.div
-                initial={{ opacity: 0, y: -6, scale: 0.97 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -6, scale: 0.97 }}
-                transition={{ duration: 0.18 }}
-                className="absolute left-0 right-0 top-[calc(100%+4px)] z-50 overflow-hidden rounded-xl border border-white/[0.08] bg-[#141419]/95 shadow-[0_12px_40px_rgba(0,0,0,0.5)] backdrop-blur-xl"
-              >
-                {members.map((member) => {
-                  const active = member.id === paidBy;
-                  return (
+          <div className="space-y-2">
+            {contributors.map((c, idx) => {
+              const selectedMember = members.find((m) => m.id === c.memberId);
+              const pickerOpen = contributorPickerOpenIdx === idx;
+              return (
+                <div
+                  key={`${idx}-${c.memberId}`}
+                  className="flex items-center gap-2 rounded-xl border border-white/10 bg-[#1e1e28] px-3 py-2"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-[#252533] flex items-center justify-center text-sm flex-shrink-0">
+                    {selectedMember?.avatar || "👤"}
+                  </div>
+
+                  <div className="relative flex-1">
                     <motion.button
-                      key={member.id}
                       type="button"
-                      onClick={() => {
-                        setPaidBy(member.id);
-                        setPaidByOpen(false);
-                      }}
-                      className={`flex w-full items-center gap-3 px-4 py-3 text-left transition-all ${
-                        active
-                          ? "bg-gradient-to-r from-[#6c47ff]/15 to-transparent border-l-2 border-[#8b6fff]"
-                          : "hover:bg-white/[0.04]"
+                      onClick={() => setContributorPickerOpenIdx((v) => (v === idx ? null : idx))}
+                      whileTap={{ scale: 0.98 }}
+                      className={`flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left transition-all duration-300 ${
+                        pickerOpen
+                          ? "border-[#8b6fff]/60 bg-[#1e1e28] shadow-[0_0_20px_rgba(108,71,255,0.12)]"
+                          : "border-white/10 bg-[#1e1e28] hover:border-white/20"
                       }`}
                     >
-                      <div className="w-8 h-8 rounded-lg bg-[#6c47ff]/10 flex items-center justify-center text-sm">
-                        {member.avatar}
-                      </div>
-                      <span className="flex-1 text-sm font-semibold text-white">
-                        {member.name}
+                      <span className="flex-1 text-sm text-white font-semibold truncate">
+                        {selectedMember?.name || "Select person"}
                       </span>
-                      {active && <Check size={16} className="text-[#8b6fff]" />}
+                      <motion.div animate={{ rotate: pickerOpen ? 180 : 0 }} transition={{ duration: 0.2 }}>
+                        <ChevronDown size={16} className="text-[#5a5a6e]" />
+                      </motion.div>
                     </motion.button>
-                  );
-                })}
-              </motion.div>
-            )}
-          </AnimatePresence>
+
+                    <AnimatePresence>
+                      {pickerOpen && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: -6, scale: 0.97 }}
+                          transition={{ duration: 0.18 }}
+                          className="absolute left-0 right-0 top-[calc(100%+4px)] z-50 overflow-hidden rounded-xl border border-white/[0.08] bg-[#141419]/95 shadow-[0_12px_40px_rgba(0,0,0,0.5)] backdrop-blur-xl"
+                        >
+                          {members.map((member) => {
+                            const active = member.id === c.memberId;
+                            const alreadyPickedByOtherRow = contributors.some(
+                              (row, rowIdx) => rowIdx !== idx && row.memberId === member.id
+                            );
+                            const disabled = alreadyPickedByOtherRow;
+                            return (
+                              <motion.button
+                                key={member.id}
+                                type="button"
+                                disabled={disabled}
+                                onClick={() => {
+                                  if (disabled) return;
+                                  setContributors((prev) =>
+                                    prev.map((row, i) => (i === idx ? { ...row, memberId: member.id } : row))
+                                  );
+                                  setContributorPickerOpenIdx(null);
+                                  setError("");
+                                }}
+                                className={`flex w-full items-center gap-3 px-4 py-3 text-left transition-all ${
+                                  active
+                                    ? "bg-gradient-to-r from-[#6c47ff]/15 to-transparent border-l-2 border-[#8b6fff]"
+                                    : disabled
+                                      ? "opacity-40 cursor-not-allowed"
+                                      : "hover:bg-white/[0.04]"
+                                }`}
+                              >
+                                <div className="w-8 h-8 rounded-lg bg-[#6c47ff]/10 flex items-center justify-center text-sm">
+                                  {member.avatar}
+                                </div>
+                                <span className="flex-1 text-sm font-semibold text-white">
+                                  {member.name}
+                                </span>
+                                {active && <Check size={16} className="text-[#8b6fff]" />}
+                              </motion.button>
+                            );
+                          })}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+
+                  <input
+                    type="number"
+                    min={0}
+                    inputMode="decimal"
+                    placeholder="₹0"
+                    value={c.amount}
+                    onChange={(e) => {
+                      setContributors((prev) =>
+                        prev.map((row, i) => (i === idx ? { ...row, amount: e.target.value } : row))
+                      );
+                      setError("");
+                    }}
+                    className="w-24 bg-[#141419] border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white outline-none focus:border-[#8b6fff]"
+                  />
+                  <motion.button
+                    whileTap={{ scale: 0.9 }}
+                    type="button"
+                    disabled={contributors.length <= 1}
+                    onClick={() => {
+                      if (contributors.length <= 1) return;
+                      setContributors((prev) => prev.filter((_, i) => i !== idx));
+                      setContributorPickerOpenIdx((open) => (open === idx ? null : open));
+                      setError("");
+                    }}
+                    className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-[#9898aa] disabled:opacity-40"
+                    title="Remove contributor"
+                  >
+                    <Trash2 size={14} />
+                  </motion.button>
+                </div>
+              );
+            })}
+
+            <div className="flex items-center justify-between">
+              <motion.button
+                whileTap={{ scale: 0.97 }}
+                type="button"
+                onClick={() => {
+                  const remaining = members.find((m) => !contributors.some((c) => c.memberId === m.id))?.id || "";
+                  setContributors((prev) => [...prev, { memberId: remaining, amount: "" }]);
+                  setError("");
+                }}
+                className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-bold text-white"
+              >
+                <Plus size={14} className="text-[#8b6fff]" />
+                Add contributor
+              </motion.button>
+
+              {amount && (
+                <span
+                  className={`text-[11px] font-bold ${
+                    Math.abs((parseFloat(amount) || 0) - contributorTotal) <= 0.01
+                      ? "text-[#2ce88a]"
+                      : "text-[#facc15]"
+                  }`}
+                >
+                  Contributed: ₹{Math.round(contributorTotal).toLocaleString()} / ₹
+                  {Math.round(parseFloat(amount || "0")).toLocaleString()}
+                </span>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Split Among */}
