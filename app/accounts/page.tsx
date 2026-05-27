@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Edit2, Trash2, Wallet, TrendingUp, TrendingDown, ArrowUpDown } from "lucide-react";
 import { useExpenses } from "@/hooks/useExpenses";
 import { useAuth } from "@/contexts/AuthContext";
-import { formatINR, getCurrentMonthPrefix } from "@/lib/utils";
+import { formatINR, getCurrentMonthPrefix, parseBankBalance, sanitizeBankBalanceInput } from "@/lib/utils";
 import BottomNav from "@/components/BottomNav";
 import PageLoader from "@/components/PageLoader";
 import ViewExpensesDrawer from "@/components/ViewExpensesDrawer";
@@ -21,6 +21,7 @@ export default function AccountsPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [bankName, setBankName] = useState("");
   const [bankBalance, setBankBalance] = useState("");
+  const parsedBalance = parseBankBalance(bankBalance);
 
   const currentMonth = getCurrentMonthPrefix();
 
@@ -55,8 +56,8 @@ export default function AccountsPage() {
 
   const handleAddBank = () => {
     if (!bankName.trim()) return;
-    const balance = parseFloat(bankBalance) || 0;
-    addBank({ name: bankName.trim(), balance });
+    if (parsedBalance === null) return;
+    addBank({ name: bankName.trim(), balance: parsedBalance });
     setBankName("");
     setBankBalance("");
     setIsAdding(false);
@@ -70,7 +71,8 @@ export default function AccountsPage() {
 
   const handleUpdateBank = () => {
     if (!editingBank || !bankName.trim()) return;
-    const newInitialBalance = parseFloat(bankBalance) || 0;
+    if (parsedBalance === null) return;
+    const newInitialBalance = parsedBalance;
     const oldInitialBalance = editingBank.initialBalance ?? editingBank.balance ?? 0;
     const diff = newInitialBalance - oldInitialBalance;
     const currentBalance = (editingBank.balance ?? 0) + diff;
@@ -186,16 +188,19 @@ export default function AccountsPage() {
                   className="w-full bg-[#252533] border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-[#5a5a6e] outline-none focus:border-[#8b6fff] transition-colors"
                 />
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="decimal"
+                  pattern="^\d+(\.\d{0,2})?$"
                   placeholder="Initial balance (₹)"
                   value={bankBalance}
-                  onChange={(e) => setBankBalance(e.target.value)}
+                  onChange={(e) => setBankBalance(sanitizeBankBalanceInput(e.target.value))}
                   className="w-full bg-[#252533] border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-[#5a5a6e] outline-none focus:border-[#8b6fff] transition-colors"
                 />
                 <div className="flex gap-2">
                   <motion.button
                     whileTap={{ scale: 0.95 }}
                     onClick={editingBank ? handleUpdateBank : handleAddBank}
+                    disabled={!bankName.trim() || parsedBalance === null}
                     className="flex-1 py-2.5 rounded-xl font-semibold text-sm text-white bg-[#6c47ff] transition-colors"
                   >
                     {editingBank ? "Update" : "Add Account"}
@@ -250,19 +255,19 @@ export default function AccountsPage() {
 
                       {/* Current Balance */}
                       <div className="font-syne text-xl font-black text-white mt-1">
-                        {formatINR(currentBal)}
+                        {formatINR(currentBal, 2)}
                       </div>
 
                       {/* Initial Balance - highlighted */}
                       <div className="flex items-center gap-2 mt-1.5">
                         <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#8b6fff]/10 border border-[#8b6fff]/20">
                           <span className="text-[9px] font-semibold text-[#8b6fff] uppercase tracking-wider">Initial</span>
-                          <span className="text-[11px] font-bold text-[#8b6fff]">{formatINR(initialBal)}</span>
+                          <span className="text-[11px] font-bold text-[#8b6fff]">{formatINR(initialBal, 2)}</span>
                         </div>
                         {diff !== 0 && (
                           <span className={`text-[10px] font-semibold flex items-center gap-0.5 ${diff > 0 ? "text-[#2ce88a]" : "text-[#ff4f6b]"}`}>
                             {diff > 0 ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
-                            {diff > 0 ? "+" : ""}{formatINR(diff)}
+                            {diff > 0 ? "+" : ""}{formatINR(diff, 2)}
                           </span>
                         )}
                       </div>

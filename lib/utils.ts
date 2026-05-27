@@ -5,8 +5,42 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatINR(amount: number): string {
-  return "₹" + Math.round(amount).toLocaleString("en-IN");
+export function formatINR(amount: number, maxFractionDigits: number = 0): string {
+  const safeMaxFractionDigits = Math.min(Math.max(0, Math.floor(maxFractionDigits)), 2);
+  return (
+    "₹" +
+    amount.toLocaleString("en-IN", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: safeMaxFractionDigits,
+    })
+  );
+}
+
+export function sanitizeBankBalanceInput(raw: string): string {
+  // Keep digits and a single dot, and cap decimals to 2 places.
+  const normalized = raw.replace(/,/g, ".");
+  let out = "";
+  let dotSeen = false;
+
+  for (const ch of normalized) {
+    if (ch >= "0" && ch <= "9") out += ch;
+    else if (ch === "." && !dotSeen) {
+      dotSeen = true;
+      out += ch;
+    }
+  }
+
+  if (!dotSeen) return out;
+  const [whole, frac = ""] = out.split(".");
+  return `${whole}.${frac.slice(0, 2)}`;
+}
+
+export function parseBankBalance(raw: string): number | null {
+  const s = raw.trim();
+  if (!s) return null;
+  if (!/^\d+(\.\d{0,2})?$/.test(s)) return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
 }
 
 export function formatDate(dateStr: string): string {
