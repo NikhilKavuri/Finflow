@@ -3,15 +3,18 @@
 import { useMemo, useState, useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { Search, Trash2, Pencil, Receipt, Sparkles } from "lucide-react";
+import { Search, Trash2, Pencil, Receipt, Sparkles, Layers, ChevronDown } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useExpenses } from "@/hooks/useExpenses";
 import { getCategoryById, CATEGORIES } from "@/lib/categories";
 import { formatINR, formatDate, groupByDate } from "@/lib/utils";
+import { getTransactionDisplayAmount, transactionMatchesSearch } from "@/lib/transactions";
 import type { Transaction } from "@/lib/types";
 
 import BottomNav from "@/components/BottomNav";
 import ExpenseDrawer from "@/components/ExpenseDrawer";
+import AddExpenseChooser from "@/components/AddExpenseChooser";
+import CategoryGroupDrawer from "@/components/CategoryGroupDrawer";
 import Toast from "@/components/Toast";
 import PageLoader, { DashboardSkeleton } from "@/components/PageLoader";
 
@@ -27,8 +30,10 @@ export default function ExpensesPage() {
     clearAll,
   } = useExpenses();
 
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  type AddFlow = "chooser" | "individual" | "group" | null;
+  const [addFlow, setAddFlow] = useState<AddFlow>(null);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [selectedCatFilter, setSelectedCatFilter] = useState<string | null>(null);
@@ -50,9 +55,8 @@ export default function ExpensesPage() {
     if (selectedCatFilter) {
       result = result.filter((t) => t.category === selectedCatFilter);
     }
-    const trimmed = query.trim().toLowerCase();
-    if (trimmed) {
-      result = result.filter((t) => t.name.toLowerCase().includes(trimmed));
+    if (query.trim()) {
+      result = result.filter((t) => transactionMatchesSearch(t, query));
     }
     return result;
   }, [state.transactions, query, selectedCatFilter]);
@@ -60,13 +64,19 @@ export default function ExpensesPage() {
   const groups = groupByDate(filtered);
   const dates = Object.keys(groups).sort((a, b) => (a > b ? -1 : 1));
 
-  const totalExpenses = useMemo(() => 
-    filtered.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0),
+  const totalExpenses = useMemo(
+    () =>
+      filtered
+        .filter((t) => t.type === "expense")
+        .reduce((s, t) => s + getTransactionDisplayAmount(t), 0),
     [filtered]
   );
-  
-  const totalIncome = useMemo(() => 
-    filtered.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0),
+
+  const totalIncome = useMemo(
+    () =>
+      filtered
+        .filter((t) => t.type === "income")
+        .reduce((s, t) => s + getTransactionDisplayAmount(t), 0),
     [filtered]
   );
 
@@ -76,10 +86,28 @@ export default function ExpensesPage() {
     return CATEGORIES.filter((c) => catIds.has(c.id));
   }, [state.transactions]);
 
-  // Handle edit: open drawer with transaction data
+  const openAddChooser = () => {
+    setEditingTransaction(null);
+    setAddFlow("chooser");
+  };
+
   const handleEditTransaction = (tx: Transaction) => {
     setEditingTransaction(tx);
-    setDrawerOpen(true);
+    setAddFlow(tx.isGroup ? "group" : "individual");
+  };
+
+  const toggleGroupExpanded = (id: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const closeAllDrawers = () => {
+    setAddFlow(null);
+    setEditingTransaction(null);
   };
 
   // Show loader while auth or data is loading
@@ -199,7 +227,7 @@ export default function ExpensesPage() {
               {state.transactions.length === 0 && (
                 <motion.button
                   whileTap={{ scale: 0.95 }}
-                  onClick={() => setDrawerOpen(true)}
+                  onClick={openAddChooser}
                   className="px-6 py-3 rounded-2xl font-syne text-sm font-bold text-white glow-accent"
                   style={{ background: "linear-gradient(135deg, #6c47ff, #8b6fff)" }}
                 >
@@ -236,63 +264,151 @@ export default function ExpensesPage() {
                       {groups[date].map((tx, i) => {
                         const cat = getCategoryById(tx.category);
                         const bank = state.banks.find((b) => b.id === tx.bankId);
+                        const displayAmount = getTransactionDisplayAmount(tx);
+                        const isGroup = !!tx.isGroup;
+                        const isExpanded = expandedGroups.has(tx.id);
+                        const subCount = tx.subExpenses?.length ?? 0;
+
                         return (
-                          <motion.div
-                            key={tx.id}
-                            layout
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ duration: 0.25, delay: i * 0.01 }}
-                            className="group flex items-center gap-3 px-3.5 py-3 bg-[#1e1e28] border border-white/[0.04] rounded-2xl hover:bg-[#252533] hover:border-white/[0.08] transition-all"
-                          >
-                            <div
-                              className="w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0 shadow-inner"
-                              style={{ background: cat.color + "18" }}
+                          <div key={tx.id} className="flex flex-col gap-1">
+                            <motion.div
+                              layout
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ duration: 0.25, delay: i * 0.01 }}
+                              className={`group flex items-center gap-3 px-3.5 py-3 bg-[#1e1e28] border rounded-2xl hover:bg-[#252533] transition-all ${
+                                isGroup
+                                  ? "border-[#ffb830]/15 hover:border-[#ffb830]/25"
+                                  : "border-white/[0.04] hover:border-white/[0.08]"
+                              }`}
                             >
-                              {cat.emoji}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="text-sm font-semibold text-white truncate">
-                                {tx.name}
+                              {isGroup ? (
+                                <button
+                                  type="button"
+                                  onClick={() => toggleGroupExpanded(tx.id)}
+                                  className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-[#ffb830]/12 text-[#ffb830]"
+                                  aria-label={isExpanded ? "Collapse group" : "Expand group"}
+                                >
+                                  <motion.div
+                                    animate={{ rotate: isExpanded ? 180 : 0 }}
+                                    transition={{ duration: 0.2 }}
+                                  >
+                                    <ChevronDown size={18} />
+                                  </motion.div>
+                                </button>
+                              ) : (
+                                <div
+                                  className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl text-lg shadow-inner"
+                                  style={{ background: cat.color + "18" }}
+                                >
+                                  {cat.emoji}
+                                </div>
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                  <div className="truncate text-sm font-semibold text-white">
+                                    {tx.name}
+                                  </div>
+                                  {isGroup && (
+                                    <span className="inline-flex flex-shrink-0 items-center gap-0.5 rounded-full border border-[#ffb830]/25 bg-[#ffb830]/10 px-1.5 py-0.5 text-[8px] font-bold text-[#ffb830]">
+                                      <Layers size={9} />
+                                      {subCount}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-[#5a5a6e]">
+                                  <span>{cat.name}</span>
+                                  {!isGroup && (
+                                    <span className="inline-flex items-center gap-1 rounded-full border border-white/[0.06] bg-white/[0.03] px-1.5 py-0.5 text-[8px] font-bold text-[#9898aa]">
+                                      🏦 {bank?.name || "Default Bank"}
+                                    </span>
+                                  )}
+                                  {isGroup && (
+                                    <span className="text-[#ffb830]/70">Category group</span>
+                                  )}
+                                </div>
                               </div>
-                              <div className="text-[10px] text-[#5a5a6e] mt-1 flex items-center gap-1.5 flex-wrap">
-                                <span>{cat.name}</span>
-                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-white/[0.03] border border-white/[0.06] text-[8px] font-bold text-[#9898aa]">
-                                  🏦 {bank?.name || "Default Bank"}
-                                </span>
+                              <div
+                                className={`flex-shrink-0 font-syne text-sm font-black ${
+                                  tx.type === "income" ? "text-[#2ce88a]" : "text-[#ff4f6b]"
+                                }`}
+                              >
+                                {tx.type === "income" ? "+" : "-"}
+                                {formatINR(displayAmount)}
                               </div>
-                            </div>
-                            <div className={`font-syne text-sm font-black flex-shrink-0 ${tx.type === "income" ? "text-[#2ce88a]" : "text-[#ff4f6b]"}`}>
-                              {tx.type === "income" ? "+" : "-"}{formatINR(tx.amount)}
-                            </div>
-                            
-                            {/* Action Buttons */}
-                            <div className="flex items-center gap-1 ml-1">
-                              <motion.button
-                                whileTap={{ scale: 0.85 }}
-                                onClick={() => handleEditTransaction(tx)}
-                                className="opacity-60 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity w-7 h-7 rounded-xl flex items-center justify-center text-[#8b6fff] hover:bg-[#6c47ff]/10"
-                                style={{ background: "rgba(108,71,255,0.06)" }}
-                                aria-label="Edit"
-                              >
-                                <Pencil size={11} />
-                              </motion.button>
-                              <motion.button
-                                whileTap={{ scale: 0.85 }}
-                                onClick={() => {
-                                  if (confirm(`Delete "${tx.name}"?`)) {
-                                    deleteTransaction(tx.id);
-                                    showToast("Transaction deleted");
-                                  }
-                                }}
-                                className="opacity-60 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity w-7 h-7 rounded-xl flex items-center justify-center text-[#ff4f6b] hover:bg-[#ff4f6b]/10"
-                                style={{ background: "rgba(255,79,107,0.06)" }}
-                                aria-label="Delete"
-                              >
-                                <Trash2 size={11} />
-                              </motion.button>
-                            </div>
-                          </motion.div>
+
+                              <div className="ml-1 flex items-center gap-1">
+                                <motion.button
+                                  whileTap={{ scale: 0.85 }}
+                                  onClick={() => handleEditTransaction(tx)}
+                                  className="flex h-7 w-7 items-center justify-center rounded-xl text-[#8b6fff] opacity-60 transition-opacity hover:bg-[#6c47ff]/10 sm:opacity-0 sm:group-hover:opacity-100"
+                                  style={{ background: "rgba(108,71,255,0.06)" }}
+                                  aria-label="Edit"
+                                >
+                                  <Pencil size={11} />
+                                </motion.button>
+                                <motion.button
+                                  whileTap={{ scale: 0.85 }}
+                                  onClick={() => {
+                                    if (confirm(`Delete "${tx.name}"?`)) {
+                                      deleteTransaction(tx.id);
+                                      showToast("Transaction deleted");
+                                    }
+                                  }}
+                                  className="flex h-7 w-7 items-center justify-center rounded-xl text-[#ff4f6b] opacity-60 transition-opacity hover:bg-[#ff4f6b]/10 sm:opacity-0 sm:group-hover:opacity-100"
+                                  style={{ background: "rgba(255,79,107,0.06)" }}
+                                  aria-label="Delete"
+                                >
+                                  <Trash2 size={11} />
+                                </motion.button>
+                              </div>
+                            </motion.div>
+
+                            <AnimatePresence>
+                              {isGroup && isExpanded && tx.subExpenses && (
+                                <motion.div
+                                  initial={{ opacity: 0, height: 0 }}
+                                  animate={{ opacity: 1, height: "auto" }}
+                                  exit={{ opacity: 0, height: 0 }}
+                                  className="ml-4 flex flex-col gap-1 overflow-hidden border-l-2 border-[#ffb830]/20 pl-3"
+                                >
+                                  {tx.subExpenses.map((sub) => {
+                                    const subCat = getCategoryById(sub.category);
+                                    const subBank = state.banks.find((b) => b.id === sub.bankId);
+                                    return (
+                                      <div
+                                        key={sub.id}
+                                        className="flex items-center gap-2.5 rounded-xl border border-white/[0.04] bg-[#15151d] px-3 py-2.5"
+                                      >
+                                        <div
+                                          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-sm"
+                                          style={{ background: subCat.color + "18" }}
+                                        >
+                                          {subCat.emoji}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                          <div className="truncate text-xs font-semibold text-white">
+                                            {sub.name}
+                                          </div>
+                                          <div className="text-[9px] text-[#5a5a6e]">
+                                            {subCat.name} · {subBank?.name}
+                                          </div>
+                                        </div>
+                                        <div
+                                          className={`font-syne text-xs font-bold ${
+                                            sub.type === "income" ? "text-[#2ce88a]" : "text-[#ff4f6b]"
+                                          }`}
+                                        >
+                                          {sub.type === "income" ? "+" : "-"}
+                                          {formatINR(sub.amount)}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </div>
                         );
                       })}
                     </div>
@@ -304,29 +420,55 @@ export default function ExpensesPage() {
         </div>
       </main>
 
-      <BottomNav onAddClick={() => setDrawerOpen(true)} />
+      <BottomNav onAddClick={openAddChooser} />
 
       <AnimatePresence>
-        {drawerOpen && (
+        {addFlow === "chooser" && (
+          <AddExpenseChooser
+            onClose={closeAllDrawers}
+            onSelectIndividual={() => setAddFlow("individual")}
+            onSelectCategory={() => setAddFlow("group")}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {addFlow === "individual" && (
           <ExpenseDrawer
             banks={state.banks}
             paymentMethods={state.paymentMethods || []}
             editingTransaction={editingTransaction}
-            onClose={() => {
-              setDrawerOpen(false);
-              setEditingTransaction(null);
-            }}
+            onClose={closeAllDrawers}
             onSubmit={(data) => {
               addTransaction(data);
-              setDrawerOpen(false);
-              setEditingTransaction(null);
+              closeAllDrawers();
               showToast("Expense logged");
             }}
             onEdit={(id, data) => {
               editTransaction(id, data);
-              setDrawerOpen(false);
-              setEditingTransaction(null);
+              closeAllDrawers();
               showToast("Expense updated");
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {addFlow === "group" && (
+          <CategoryGroupDrawer
+            banks={state.banks}
+            paymentMethods={state.paymentMethods || []}
+            editingGroup={editingTransaction?.isGroup ? editingTransaction : null}
+            onClose={closeAllDrawers}
+            onSubmit={(data) => {
+              addTransaction(data);
+              closeAllDrawers();
+              showToast("Category group created");
+            }}
+            onEdit={(id, data) => {
+              editTransaction(id, data);
+              closeAllDrawers();
+              showToast("Category group updated");
             }}
           />
         )}

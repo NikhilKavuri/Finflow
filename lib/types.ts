@@ -7,6 +7,19 @@ export interface Bank {
 
 export type PaymentMethod = "credit_card" | "upi" | "cash" | "bank_transfer" | "other";
 
+/** Line item inside a category (group) expense. */
+export interface SubExpense {
+  id: string;
+  name: string;
+  amount: number;
+  category: string;
+  type: "expense" | "income";
+  date: string; // ISO yyyy-mm-dd
+  bankId: string;
+  paymentMethod?: PaymentMethod;
+  paymentMethodId?: string;
+}
+
 export interface Transaction {
   id: string;
   name: string;
@@ -17,6 +30,9 @@ export interface Transaction {
   bankId: string;
   paymentMethod?: PaymentMethod;
   paymentMethodId?: string;
+  /** Category / group expense with nested sub-expenses. */
+  isGroup?: boolean;
+  subExpenses?: SubExpense[];
 }
 
 export interface AppState {

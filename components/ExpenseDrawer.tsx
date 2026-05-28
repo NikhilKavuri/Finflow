@@ -16,18 +16,35 @@ interface Props {
   banks: Bank[];
   paymentMethods: PaymentMethodConfig[];
   editingTransaction?: Transaction | null;
+  /** Sub-expense inside a category group — same fields, different chrome. */
+  variant?: "default" | "sub";
+  drawerTitle?: string;
+  defaultCategory?: string;
 }
 
 type TxType = "expense" | "income";
 
-export default function ExpenseDrawer({ onClose, onSubmit, onEdit, banks, paymentMethods, editingTransaction }: Props) {
+export default function ExpenseDrawer({
+  onClose,
+  onSubmit,
+  onEdit,
+  banks,
+  paymentMethods,
+  editingTransaction,
+  variant = "default",
+  drawerTitle,
+  defaultCategory,
+}: Props) {
   const isEditing = !!editingTransaction;
+  const isSub = variant === "sub";
 
   const [name, setName] = useState(editingTransaction?.name || "");
   const [amount, setAmount] = useState(editingTransaction ? String(editingTransaction.amount) : "");
   const [date, setDate] = useState(editingTransaction?.date || getTodayISO());
   const [displayedMonth, setDisplayedMonth] = useState((editingTransaction?.date || getTodayISO()).slice(0, 7));
-  const [selectedCat, setSelectedCat] = useState<string | null>(editingTransaction?.category || null);
+  const [selectedCat, setSelectedCat] = useState<string | null>(
+    editingTransaction?.category || defaultCategory || null
+  );
   const [txType, setTxType] = useState<TxType>(editingTransaction?.type || "expense");
   const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState<string>(
     editingTransaction?.paymentMethodId || paymentMethods[0]?.id || ""
@@ -180,11 +197,14 @@ export default function ExpenseDrawer({ onClose, onSubmit, onEdit, banks, paymen
     }
   };
 
+  const overlayZ = isSub ? "z-[60]" : "z-40";
+  const panelZ = isSub ? "z-[70]" : "z-50";
+
   return (
     <>
       {/* Overlay */}
       <motion.div
-        className="fixed inset-0 z-40 bg-black/60"
+        className={`fixed inset-0 ${overlayZ} bg-black/60`}
         style={{ backdropFilter: "blur(4px)" }}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -194,7 +214,7 @@ export default function ExpenseDrawer({ onClose, onSubmit, onEdit, banks, paymen
 
       {/* Drawer */}
       <motion.div
-        className="keyboard-panel fixed left-1/2 z-50 flex w-full max-w-[480px] flex-col overflow-hidden rounded-t-3xl border border-b-0 border-white/10 bg-[#18181f]"
+        className={`keyboard-panel fixed left-1/2 ${panelZ} flex w-full max-w-[480px] flex-col overflow-hidden rounded-t-3xl border border-b-0 border-white/10 bg-[#18181f]`}
         style={{ x: "-50%", bottom: "var(--keyboard-offset, 0)" }}
         initial={{ y: "100%" }}
         animate={{ y: 0 }}
@@ -209,7 +229,7 @@ export default function ExpenseDrawer({ onClose, onSubmit, onEdit, banks, paymen
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-[max(2rem,env(safe-area-inset-bottom))] pt-2">
           <div className="flex items-center justify-between mb-5">
             <h2 className="font-syne text-lg font-bold text-white">
-              {isEditing ? "Edit Expense" : "Log Expense"}
+              {drawerTitle ?? (isEditing ? "Edit Expense" : isSub ? "Add Sub-Expense" : "Log Expense")}
             </h2>
             <motion.button whileTap={{ scale: 0.88 }} onClick={onClose}
               className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-[#9898aa]">
@@ -518,7 +538,7 @@ export default function ExpenseDrawer({ onClose, onSubmit, onEdit, banks, paymen
             className="w-full py-4 rounded-2xl font-syne text-base font-bold text-white glow-accent transition-all"
             style={{ background: "linear-gradient(135deg, #6c47ff, #8b6fff)" }}
           >
-            {isEditing ? "Save Changes ✦" : "Add to Feed ✦"}
+            {isEditing ? "Save Changes ✦" : isSub ? "Add to Group ✦" : "Add to Feed ✦"}
           </motion.button>
         </div>
       </motion.div>

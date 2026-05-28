@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import type { AppState, Transaction, Bank, PaymentMethodConfig } from "@/lib/types";
+import type { AppState, Transaction, Bank, PaymentMethodConfig, SubExpense } from "@/lib/types";
+import { syncGroupTransactionFields } from "@/lib/transactions";
 import { getTodayISO } from "@/lib/utils";
 import { syncExpensesToFirestore, loadExpensesFromFirestore } from "@/lib/firestore";
 
@@ -83,6 +84,39 @@ function getBankBalanceDelta(
     return 0; // Normal billing cycle card transactions don't affect bank
   }
   return tx.type === "expense" ? -tx.amount : tx.amount;
+}
+
+function applySubExpenseBankDeltas(
+  banks: Bank[],
+  subExpenses: SubExpense[],
+  paymentMethods: PaymentMethodConfig[],
+  direction: 1 | -1
+): Bank[] {
+  let updated = banks;
+  for (const sub of subExpenses) {
+    const delta = getBankBalanceDelta(sub, paymentMethods) * direction;
+    if (delta === 0) continue;
+    updated = updated.map((bank) =>
+      bank.id === sub.bankId ? { ...bank, balance: (bank.balance ?? 0) + delta } : bank
+    );
+  }
+  return updated;
+}
+
+function applyGroupBankDeltas(
+  tx: Transaction,
+  banks: Bank[],
+  paymentMethods: PaymentMethodConfig[],
+  direction: 1 | -1
+): Bank[] {
+  if (tx.isGroup && tx.subExpenses?.length) {
+    return applySubExpenseBankDeltas(banks, tx.subExpenses, paymentMethods, direction);
+  }
+  const delta = getBankBalanceDelta(tx, paymentMethods) * direction;
+  if (delta === 0) return banks;
+  return banks.map((bank) =>
+    bank.id === tx.bankId ? { ...bank, balance: (bank.balance ?? 0) + delta } : bank
+  );
 }
 
 function loadState(): AppState {
@@ -199,22 +233,18 @@ export function useExpenses() {
 
   const addTransaction = useCallback(
     (tx: Omit<Transaction, "id">) => {
-      const newTx: Transaction = {
+      const base: Transaction = {
         ...tx,
         id: `tx_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
         date: tx.date || getTodayISO(),
         bankId: tx.bankId || "default",
       };
+      const newTx: Transaction = tx.isGroup
+        ? syncGroupTransactionFields(base, getTodayISO())
+        : base;
+
       updateState((prev) => {
-        // Update bank balance
-        const updatedBanks = prev.banks.map((bank) => {
-          if (bank.id === newTx.bankId) {
-            const currentBalance = bank.balance ?? 0;
-            const newBalance = currentBalance + getBankBalanceDelta(newTx, prev.paymentMethods);
-            return { ...bank, balance: newBalance };
-          }
-          return bank;
-        });
+        const updatedBanks = applyGroupBankDeltas(newTx, prev.banks, prev.paymentMethods, 1);
 
         return {
           ...prev,
@@ -231,19 +261,9 @@ export function useExpenses() {
     (id: string) => {
       updateState((prev) => {
         const tx = prev.transactions.find((t) => t.id === id);
-        let updatedBanks = prev.banks;
-
-        // Reverse the balance change
-        if (tx) {
-          updatedBanks = prev.banks.map((bank) => {
-            if (bank.id === tx.bankId) {
-              const currentBalance = bank.balance ?? 0;
-              const newBalance = currentBalance - getBankBalanceDelta(tx, prev.paymentMethods);
-              return { ...bank, balance: newBalance };
-            }
-            return bank;
-          });
-        }
+        const updatedBanks = tx
+          ? applyGroupBankDeltas(tx, prev.banks, prev.paymentMethods, -1)
+          : prev.banks;
 
         return {
           ...prev,
@@ -261,17 +281,9 @@ export function useExpenses() {
         ? prev.transactions.filter((tx) => tx.date.startsWith(monthPrefix))
         : prev.transactions;
 
-      // Reverse all balance changes
       let updatedBanks = [...prev.banks];
       for (const tx of toRemove) {
-        updatedBanks = updatedBanks.map((bank) => {
-          if (bank.id === tx.bankId) {
-            const currentBalance = bank.balance ?? 0;
-            const newBalance = currentBalance - getBankBalanceDelta(tx, prev.paymentMethods);
-            return { ...bank, balance: newBalance };
-          }
-          return bank;
-        });
+        updatedBanks = applyGroupBankDeltas(tx, updatedBanks, prev.paymentMethods, -1);
       }
 
       return {
@@ -291,17 +303,9 @@ export function useExpenses() {
           (tx) => tx.category === categoryId && (!monthPrefix || tx.date.startsWith(monthPrefix))
         );
 
-        // Reverse balance changes
         let updatedBanks = [...prev.banks];
         for (const tx of toRemove) {
-          updatedBanks = updatedBanks.map((bank) => {
-            if (bank.id === tx.bankId) {
-              const currentBalance = bank.balance ?? 0;
-              const newBalance = currentBalance - getBankBalanceDelta(tx, prev.paymentMethods);
-              return { ...bank, balance: newBalance };
-            }
-            return bank;
-          });
+          updatedBanks = applyGroupBankDeltas(tx, updatedBanks, prev.paymentMethods, -1);
         }
 
         return {
@@ -335,23 +339,13 @@ export function useExpenses() {
         const oldTx = prev.transactions.find((t) => t.id === id);
         if (!oldTx) return prev;
 
-        const newTx: Transaction = { ...oldTx, ...updates };
+        const merged = { ...oldTx, ...updates };
+        const newTx: Transaction = merged.isGroup
+          ? syncGroupTransactionFields(merged, getTodayISO())
+          : merged;
 
-        // Reverse old bank delta, apply new one
-        let updatedBanks = prev.banks.map((bank) => {
-          if (bank.id === oldTx.bankId) {
-            const balance = (bank.balance ?? 0) - getBankBalanceDelta(oldTx, prev.paymentMethods);
-            return { ...bank, balance };
-          }
-          return bank;
-        });
-        updatedBanks = updatedBanks.map((bank) => {
-          if (bank.id === newTx.bankId) {
-            const balance = (bank.balance ?? 0) + getBankBalanceDelta(newTx, prev.paymentMethods);
-            return { ...bank, balance };
-          }
-          return bank;
-        });
+        let updatedBanks = applyGroupBankDeltas(oldTx, prev.banks, prev.paymentMethods, -1);
+        updatedBanks = applyGroupBankDeltas(newTx, updatedBanks, prev.paymentMethods, 1);
 
         return {
           ...prev,
