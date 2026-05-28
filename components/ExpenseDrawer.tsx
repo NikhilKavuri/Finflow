@@ -7,6 +7,7 @@ import { CATEGORIES, type Category } from "@/lib/categories";
 import { classifyExpense } from "@/lib/classifier";
 import type { Transaction, Bank, PaymentMethodConfig } from "@/lib/types";
 import { formatDate, formatMonthLabel, getCurrentMonthPrefix, getDaysInMonth, getTodayISO } from "@/lib/utils";
+import { useMobileDrawerViewport } from "@/hooks/useMobileDrawerViewport";
 import InlineCalculator from "./InlineCalculator";
 
 interface Props {
@@ -114,32 +115,7 @@ export default function ExpenseDrawer({
     }
   };
 
-  useEffect(() => {
-    const root = document.documentElement;
-    const previousOverflow = document.body.style.overflow;
-
-    const syncViewportHeight = () => {
-      const vh = window.visualViewport?.height ?? window.innerHeight;
-      const offset = window.innerHeight - (window.visualViewport?.height ?? window.innerHeight);
-      root.style.setProperty("--visual-viewport-height", `${vh}px`);
-      root.style.setProperty("--keyboard-offset", `${Math.max(0, offset)}px`);
-    };
-
-    syncViewportHeight();
-    document.body.style.overflow = "hidden";
-    window.visualViewport?.addEventListener("resize", syncViewportHeight);
-    window.visualViewport?.addEventListener("scroll", syncViewportHeight);
-    window.addEventListener("resize", syncViewportHeight);
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      root.style.removeProperty("--visual-viewport-height");
-      root.style.removeProperty("--keyboard-offset");
-      window.visualViewport?.removeEventListener("resize", syncViewportHeight);
-      window.visualViewport?.removeEventListener("scroll", syncViewportHeight);
-      window.removeEventListener("resize", syncViewportHeight);
-    };
-  }, []);
+  useMobileDrawerViewport(true);
 
   // Close bank dropdown on outside click
   useEffect(() => {
@@ -226,9 +202,9 @@ export default function ExpenseDrawer({
           <div className="w-10 h-1 bg-white/20 rounded-full" />
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-[max(2rem,env(safe-area-inset-bottom))] pt-2">
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="font-syne text-lg font-bold text-white">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-2 sm:px-5">
+          <div className="mb-4 flex items-center justify-between gap-2 sm:mb-5">
+            <h2 className="truncate font-syne text-base font-bold text-white sm:text-lg">
               {drawerTitle ?? (isEditing ? "Edit Expense" : isSub ? "Add Sub-Expense" : "Log Expense")}
             </h2>
             <motion.button whileTap={{ scale: 0.88 }} onClick={onClose}
@@ -280,10 +256,10 @@ export default function ExpenseDrawer({
               Date
             </label>
             <div className="rounded-2xl border border-white/[0.06] bg-[#1e1e28] p-3">
-              <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="mb-3 flex flex-col gap-2.5 sm:mb-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                 <div className="flex min-w-0 items-center gap-2">
-                  <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-[#6c47ff]/15 text-[#8b6fff]">
-                    <CalendarDays size={17} />
+                  <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-[#6c47ff]/15 text-[#8b6fff] sm:h-9 sm:w-9">
+                    <CalendarDays size={16} />
                   </div>
                   <div className="min-w-0">
                     <div className="truncate text-sm font-bold text-white">{formatDate(date)}</div>
@@ -292,7 +268,7 @@ export default function ExpenseDrawer({
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 self-end sm:self-auto">
                   <button
                     type="button"
                     onClick={() => shiftMonth(-1)}
@@ -337,7 +313,7 @@ export default function ExpenseDrawer({
                         setDate(value);
                         setError("");
                       }}
-                      className={`flex h-16 w-12 flex-shrink-0 flex-col items-center justify-center rounded-2xl border transition-colors ${
+                      className={`flex h-14 w-11 flex-shrink-0 flex-col items-center justify-center rounded-2xl border transition-colors sm:h-16 sm:w-12 ${
                         active
                           ? "border-[#8b6fff] bg-[#6c47ff]/20 text-white"
                           : "border-white/[0.06] bg-[#252533] text-[#9898aa]"
@@ -513,19 +489,19 @@ export default function ExpenseDrawer({
           {/* Category Picker */}
           <div className="mb-6">
             <label className="block text-[11px] font-semibold text-[#5a5a6e] tracking-widest uppercase mb-2">Category</label>
-            <div className="grid grid-cols-3 gap-2 max-h-52 overflow-y-auto pr-1">
+            <div className="grid max-h-44 grid-cols-3 gap-1.5 overflow-y-auto pr-0.5 sm:max-h-52 sm:gap-2 sm:pr-1">
               {CATEGORIES.map((cat) => (
                 <motion.button
                   key={cat.id}
                   whileTap={{ scale: 0.93 }}
                   onClick={() => setSelectedCat(cat.id)}
-                  className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border text-center transition-all
+                  className={`flex flex-col items-center gap-1 rounded-xl border p-2.5 text-center transition-all sm:gap-1.5 sm:p-3
                     ${selectedCat === cat.id
                       ? "border-[#6c47ff] bg-[#6c47ff]/12"
                       : "bg-[#1e1e28] border-white/[0.06] hover:border-white/15"}`}
                 >
-                  <span className="text-xl">{cat.emoji}</span>
-                  <span className="text-[10px] text-[#9898aa] leading-tight">{cat.name}</span>
+                  <span className="text-lg sm:text-xl">{cat.emoji}</span>
+                  <span className="line-clamp-2 text-[9px] leading-tight text-[#9898aa] sm:text-[10px]">{cat.name}</span>
                 </motion.button>
               ))}
             </div>
@@ -535,7 +511,7 @@ export default function ExpenseDrawer({
             whileTap={{ scale: 0.97 }}
             whileHover={{ translateY: -1 }}
             onClick={handleSubmit}
-            className="w-full py-4 rounded-2xl font-syne text-base font-bold text-white glow-accent transition-all"
+            className="w-full rounded-2xl py-3.5 font-syne text-sm font-bold text-white glow-accent transition-all sm:py-4 sm:text-base"
             style={{ background: "linear-gradient(135deg, #6c47ff, #8b6fff)" }}
           >
             {isEditing ? "Save Changes ✦" : isSub ? "Add to Group ✦" : "Add to Feed ✦"}

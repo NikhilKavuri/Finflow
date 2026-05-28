@@ -118,7 +118,7 @@ export default function ExpensesPage() {
   return (
     <div className="app-screen mx-auto flex w-full max-w-[480px] flex-col overflow-x-hidden pb-24">
       {/* Header */}
-      <nav className="sticky top-0 z-30 px-5 py-4 glass-nav border-b border-white/[0.06]">
+      <nav className="sticky top-0 z-30 border-b border-white/[0.06] px-4 py-3.5 glass-nav sm:px-5 sm:py-4">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Receipt size={20} className="text-[#8b6fff]" />
@@ -148,7 +148,7 @@ export default function ExpensesPage() {
         )}
       </nav>
 
-      <main className="flex-1 px-4 pt-4 space-y-4">
+      <main className="flex-1 space-y-4 px-3 pt-4 sm:px-4">
         {state.transactions.length > 0 && (
           <>
             {/* Quick Metrics */}
@@ -276,91 +276,104 @@ export default function ExpensesPage() {
                               initial={{ opacity: 0, y: 10 }}
                               animate={{ opacity: 1, y: 0 }}
                               transition={{ duration: 0.25, delay: i * 0.01 }}
-                              className={`group flex items-center gap-3 px-3.5 py-3 bg-[#1e1e28] border rounded-2xl hover:bg-[#252533] transition-all ${
+                              className={`group rounded-2xl border bg-[#1e1e28] px-3 py-3 transition-all active:bg-[#252533] sm:px-3.5 ${
                                 isGroup
-                                  ? "border-[#ffb830]/15 hover:border-[#ffb830]/25"
-                                  : "border-white/[0.04] hover:border-white/[0.08]"
+                                  ? "border-[#ffb830]/15"
+                                  : "border-white/[0.04]"
                               }`}
                             >
-                              {isGroup ? (
-                                <button
-                                  type="button"
-                                  onClick={() => toggleGroupExpanded(tx.id)}
-                                  className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-[#ffb830]/12 text-[#ffb830]"
-                                  aria-label={isExpanded ? "Collapse group" : "Expand group"}
-                                >
-                                  <motion.div
-                                    animate={{ rotate: isExpanded ? 180 : 0 }}
-                                    transition={{ duration: 0.2 }}
+                              <div className="flex gap-2.5 sm:gap-3">
+                                {isGroup ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleGroupExpanded(tx.id)}
+                                    className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-[#ffb830]/12 text-[#ffb830] sm:h-10 sm:w-10"
+                                    aria-label={isExpanded ? "Collapse group" : "Expand group"}
                                   >
-                                    <ChevronDown size={18} />
-                                  </motion.div>
-                                </button>
-                              ) : (
-                                <div
-                                  className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl text-lg shadow-inner"
-                                  style={{ background: cat.color + "18" }}
-                                >
-                                  {cat.emoji}
-                                </div>
-                              )}
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-2">
-                                  <div className="truncate text-sm font-semibold text-white">
-                                    {tx.name}
+                                    <motion.div
+                                      animate={{ rotate: isExpanded ? 180 : 0 }}
+                                      transition={{ duration: 0.2 }}
+                                    >
+                                      <ChevronDown size={16} />
+                                    </motion.div>
+                                  </button>
+                                ) : (
+                                  <div
+                                    className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl text-base sm:h-10 sm:w-10 sm:text-lg"
+                                    style={{ background: cat.color + "18" }}
+                                  >
+                                    {cat.emoji}
                                   </div>
-                                  {isGroup && (
-                                    <span className="inline-flex flex-shrink-0 items-center gap-0.5 rounded-full border border-[#ffb830]/25 bg-[#ffb830]/10 px-1.5 py-0.5 text-[8px] font-bold text-[#ffb830]">
-                                      <Layers size={9} />
-                                      {subCount}
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-[#5a5a6e]">
-                                  <span>{cat.name}</span>
-                                  {!isGroup && (
-                                    <span className="inline-flex items-center gap-1 rounded-full border border-white/[0.06] bg-white/[0.03] px-1.5 py-0.5 text-[8px] font-bold text-[#9898aa]">
-                                      🏦 {bank?.name || "Default Bank"}
-                                    </span>
-                                  )}
-                                  {isGroup && (
-                                    <span className="text-[#ffb830]/70">Category group</span>
-                                  )}
-                                </div>
-                              </div>
-                              <div
-                                className={`flex-shrink-0 font-syne text-sm font-black ${
-                                  tx.type === "income" ? "text-[#2ce88a]" : "text-[#ff4f6b]"
-                                }`}
-                              >
-                                {tx.type === "income" ? "+" : "-"}
-                                {formatINR(displayAmount)}
-                              </div>
+                                )}
 
-                              <div className="ml-1 flex items-center gap-1">
-                                <motion.button
-                                  whileTap={{ scale: 0.85 }}
-                                  onClick={() => handleEditTransaction(tx)}
-                                  className="flex h-7 w-7 items-center justify-center rounded-xl text-[#8b6fff] opacity-60 transition-opacity hover:bg-[#6c47ff]/10 sm:opacity-0 sm:group-hover:opacity-100"
-                                  style={{ background: "rgba(108,71,255,0.06)" }}
-                                  aria-label="Edit"
-                                >
-                                  <Pencil size={11} />
-                                </motion.button>
-                                <motion.button
-                                  whileTap={{ scale: 0.85 }}
-                                  onClick={() => {
-                                    if (confirm(`Delete "${tx.name}"?`)) {
-                                      deleteTransaction(tx.id);
-                                      showToast("Transaction deleted");
-                                    }
-                                  }}
-                                  className="flex h-7 w-7 items-center justify-center rounded-xl text-[#ff4f6b] opacity-60 transition-opacity hover:bg-[#ff4f6b]/10 sm:opacity-0 sm:group-hover:opacity-100"
-                                  style={{ background: "rgba(255,79,107,0.06)" }}
-                                  aria-label="Delete"
-                                >
-                                  <Trash2 size={11} />
-                                </motion.button>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex items-center gap-1.5">
+                                        <div className="truncate text-sm font-semibold text-white">
+                                          {tx.name}
+                                        </div>
+                                        {isGroup && (
+                                          <span className="inline-flex flex-shrink-0 items-center gap-0.5 rounded-full border border-[#ffb830]/25 bg-[#ffb830]/10 px-1.5 py-0.5 text-[8px] font-bold text-[#ffb830]">
+                                            <Layers size={9} />
+                                            {subCount}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[10px] text-[#5a5a6e]">
+                                        <span className="truncate">{cat.name}</span>
+                                        {!isGroup && bank?.name && (
+                                          <>
+                                            <span>·</span>
+                                            <span className="truncate">{bank.name}</span>
+                                          </>
+                                        )}
+                                        {isGroup && (
+                                          <>
+                                            <span>·</span>
+                                            <span className="text-[#ffb830]/70">Group</span>
+                                          </>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    <div className="flex flex-shrink-0 flex-col items-end gap-1.5">
+                                      <div
+                                        className={`font-syne text-xs font-black sm:text-sm ${
+                                          tx.type === "income" ? "text-[#2ce88a]" : "text-[#ff4f6b]"
+                                        }`}
+                                      >
+                                        {tx.type === "income" ? "+" : "-"}
+                                        {formatINR(displayAmount)}
+                                      </div>
+                                      <div className="flex items-center gap-1">
+                                        <motion.button
+                                          whileTap={{ scale: 0.85 }}
+                                          onClick={() => handleEditTransaction(tx)}
+                                          className="flex h-7 w-7 items-center justify-center rounded-lg text-[#8b6fff] sm:rounded-xl"
+                                          style={{ background: "rgba(108,71,255,0.08)" }}
+                                          aria-label="Edit"
+                                        >
+                                          <Pencil size={11} />
+                                        </motion.button>
+                                        <motion.button
+                                          whileTap={{ scale: 0.85 }}
+                                          onClick={() => {
+                                            if (confirm(`Delete "${tx.name}"?`)) {
+                                              deleteTransaction(tx.id);
+                                              showToast("Transaction deleted");
+                                            }
+                                          }}
+                                          className="flex h-7 w-7 items-center justify-center rounded-lg text-[#ff4f6b] sm:rounded-xl"
+                                          style={{ background: "rgba(255,79,107,0.08)" }}
+                                          aria-label="Delete"
+                                        >
+                                          <Trash2 size={11} />
+                                        </motion.button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
                               </div>
                             </motion.div>
 
@@ -370,7 +383,7 @@ export default function ExpensesPage() {
                                   initial={{ opacity: 0, height: 0 }}
                                   animate={{ opacity: 1, height: "auto" }}
                                   exit={{ opacity: 0, height: 0 }}
-                                  className="ml-4 flex flex-col gap-1 overflow-hidden border-l-2 border-[#ffb830]/20 pl-3"
+                                  className="ml-2 flex flex-col gap-1 overflow-hidden border-l-2 border-[#ffb830]/20 pl-2.5 sm:ml-4 sm:pl-3"
                                 >
                                   {tx.subExpenses.map((sub) => {
                                     const subCat = getCategoryById(sub.category);
@@ -378,24 +391,25 @@ export default function ExpensesPage() {
                                     return (
                                       <div
                                         key={sub.id}
-                                        className="flex items-center gap-2.5 rounded-xl border border-white/[0.04] bg-[#15151d] px-3 py-2.5"
+                                        className="flex items-center gap-2 rounded-xl border border-white/[0.04] bg-[#15151d] px-2.5 py-2 sm:gap-2.5 sm:px-3 sm:py-2.5"
                                       >
                                         <div
-                                          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-sm"
+                                          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-sm sm:h-8 sm:w-8"
                                           style={{ background: subCat.color + "18" }}
                                         >
                                           {subCat.emoji}
                                         </div>
                                         <div className="min-w-0 flex-1">
-                                          <div className="truncate text-xs font-semibold text-white">
+                                          <div className="truncate text-[11px] font-semibold text-white sm:text-xs">
                                             {sub.name}
                                           </div>
-                                          <div className="text-[9px] text-[#5a5a6e]">
-                                            {subCat.name} · {subBank?.name}
+                                          <div className="truncate text-[9px] text-[#5a5a6e]">
+                                            {subCat.name}
+                                            {subBank?.name ? ` · ${subBank.name}` : ""}
                                           </div>
                                         </div>
                                         <div
-                                          className={`font-syne text-xs font-bold ${
+                                          className={`flex-shrink-0 font-syne text-[11px] font-bold sm:text-xs ${
                                             sub.type === "income" ? "text-[#2ce88a]" : "text-[#ff4f6b]"
                                           }`}
                                         >

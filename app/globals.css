@@ -133,6 +133,12 @@ input[type="number"] { -moz-appearance: textfield; }
   .keyboard-panel {
     max-height: min(88svh, calc(var(--visual-viewport-height, 100svh) - 12px));
   }
+  .mobile-sheet {
+    max-height: min(88svh, calc(var(--visual-viewport-height, 100svh) - 12px));
+  }
+  .mobile-sheet-compact {
+    max-height: min(72svh, calc(var(--visual-viewport-height, 100svh) - 12px));
+  }
 }
 
 /* Profile icon animations */
