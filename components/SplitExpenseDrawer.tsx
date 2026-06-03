@@ -298,27 +298,36 @@ export default function TripExpenseDrawer({ members, onClose, onSubmit, initialE
               return (
                 <div
                   key={`${idx}-${c.memberId}`}
-                  className="flex items-center gap-2 rounded-xl border border-white/10 bg-[#1e1e28] px-3 py-2"
+                  className="flex min-w-0 items-center gap-2 rounded-xl border border-white/10 bg-[#1e1e28] px-3 py-2"
                 >
                   <div className="w-8 h-8 rounded-lg bg-[#252533] flex items-center justify-center text-sm flex-shrink-0">
                     {selectedMember?.avatar || "👤"}
                   </div>
 
-                  <div className="relative flex-1">
+                  <div className="relative min-w-0 flex-1">
                     <motion.button
                       type="button"
                       onClick={() => setContributorPickerOpenIdx((v) => (v === idx ? null : idx))}
                       whileTap={{ scale: 0.98 }}
-                      className={`flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left transition-all duration-300 ${
+                      title={!pickerOpen ? selectedMember?.name : undefined}
+                      className={`flex w-full min-w-0 items-center gap-2 rounded-xl border px-3 py-2 text-left transition-all duration-300 ${
                         pickerOpen
                           ? "border-[#8b6fff]/60 bg-[#1e1e28] shadow-[0_0_20px_rgba(108,71,255,0.12)]"
                           : "border-white/10 bg-[#1e1e28] hover:border-white/20"
                       }`}
                     >
-                      <span className="flex-1 text-sm text-white font-semibold truncate">
+                      <span
+                        className={`min-w-0 flex-1 text-sm text-white font-semibold ${
+                          pickerOpen ? "whitespace-normal break-words" : "truncate"
+                        }`}
+                      >
                         {selectedMember?.name || "Select person"}
                       </span>
-                      <motion.div animate={{ rotate: pickerOpen ? 180 : 0 }} transition={{ duration: 0.2 }}>
+                      <motion.div
+                        className="flex-shrink-0"
+                        animate={{ rotate: pickerOpen ? 180 : 0 }}
+                        transition={{ duration: 0.2 }}
+                      >
                         <ChevronDown size={16} className="text-[#5a5a6e]" />
                       </motion.div>
                     </motion.button>
@@ -386,7 +395,7 @@ export default function TripExpenseDrawer({ members, onClose, onSubmit, initialE
                       );
                       setError("");
                     }}
-                    className="w-24 bg-[#141419] border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white outline-none focus:border-[#8b6fff]"
+                    className="w-24 flex-shrink-0 bg-[#141419] border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white outline-none focus:border-[#8b6fff]"
                   />
                   <motion.button
                     whileTap={{ scale: 0.9 }}
@@ -398,7 +407,7 @@ export default function TripExpenseDrawer({ members, onClose, onSubmit, initialE
                       setContributorPickerOpenIdx((open) => (open === idx ? null : open));
                       setError("");
                     }}
-                    className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-[#9898aa] disabled:opacity-40"
+                    className="w-8 h-8 flex-shrink-0 rounded-lg bg-white/5 flex items-center justify-center text-[#9898aa] disabled:opacity-40"
                     title="Remove contributor"
                   >
                     <Trash2 size={14} />
