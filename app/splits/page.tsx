@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { Split, Search } from "lucide-react";
-import { useSplits } from "@/hooks/useSplits";
+import { useSplits, getSplitTotal } from "@/hooks/useSplits";
 import BottomNav from "@/components/BottomNav";
 import TripCard from "@/components/TripCard";
 import CreateTripDrawer from "@/components/CreateTripDrawer";
@@ -28,14 +28,20 @@ export default function TripsPage() {
   const archivedTrips = trips.filter((t) => t.archived);
 
   const filteredActive = search.trim()
-    ? activeTrips.filter((t) =>
-        t.name.toLowerCase().includes(search.trim().toLowerCase())
-      )
+    ? activeTrips.filter((t) => {
+        const query = search.trim().toLowerCase();
+        const matchesName = t.name.toLowerCase().includes(query);
+        const matchesAmount = getSplitTotal(t).toString().includes(query);
+        return matchesName || matchesAmount;
+      })
     : activeTrips;
   const filteredArchived = search.trim()
-    ? archivedTrips.filter((t) =>
-        t.name.toLowerCase().includes(search.trim().toLowerCase())
-      )
+    ? archivedTrips.filter((t) => {
+        const query = search.trim().toLowerCase();
+        const matchesName = t.name.toLowerCase().includes(query);
+        const matchesAmount = getSplitTotal(t).toString().includes(query);
+        return matchesName || matchesAmount;
+      })
     : archivedTrips;
 
   if (!hydrated) return <PageLoader message="Loading splits..." />;

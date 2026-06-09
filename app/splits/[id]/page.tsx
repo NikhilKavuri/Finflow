@@ -14,6 +14,7 @@ import {
   Edit2,
   Crown,
   Shield,
+  Search,
 } from "lucide-react";
 import { useSplits, calculateBalances, getSplitTotal, getMemberSpending } from "@/hooks/useSplits";
 import { useAuth } from "@/contexts/AuthContext";
@@ -38,6 +39,7 @@ export default function TripDetailPage() {
     deleteSplitExpense,
     updateSplitExpense,
     addMember,
+    removeMember,
     updateMember,
     settleDebt,
     archiveSplit,
@@ -65,6 +67,8 @@ export default function TripDetailPage() {
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [memberToPromote, setMemberToPromote] = useState<SplitMember | null>(null);
+  const [memberToRemove, setMemberToRemove] = useState<SplitMember | null>(null);
+  const [expenseSearch, setExpenseSearch] = useState("");
 
   const AVATAR_OPTIONS = ["😎", "🤩", "😊", "🥳", "🧐", "😈", "🦊", "🐻", "🦁", "🐸", "🌸", "⭐"];
 
@@ -77,6 +81,17 @@ export default function TripDetailPage() {
   const total = useMemo(() => (trip ? getSplitTotal(trip) : 0), [trip]);
   const memberSpending = useMemo(() => (trip ? getMemberSpending(trip) : {}), [trip]);
   const perPersonAvg = trip && trip.members.length > 0 ? total / trip.members.length : 0;
+
+  const filteredExpenses = useMemo(() => {
+    if (!trip) return [];
+    if (!expenseSearch.trim()) return trip.expenses;
+    const query = expenseSearch.trim().toLowerCase();
+    return trip.expenses.filter((expense) => {
+      const matchesDescription = expense.description.toLowerCase().includes(query);
+      const matchesAmount = expense.amount.toString().includes(query);
+      return matchesDescription || matchesAmount;
+    });
+  }, [trip, expenseSearch]);
 
   if (!hydrated) return <PageLoader message="Loading split..." />;
 
@@ -117,6 +132,35 @@ export default function TripDetailPage() {
     updateMember(tripId, editingMember.id, { name, avatar });
     setEditingMember(null);
     showToast("Member updated");
+  };
+
+  const handleRemoveMember = (memberId: string) => {
+    const memberToRemoveObj = trip.members.find((m) => m.id === memberId);
+    if (!memberToRemoveObj) return;
+
+    const involved = trip.expenses.some(
+      (e) =>
+        e.paidBy === memberId ||
+        (e.contributors?.some((c) => c.memberId === memberId) ?? false) ||
+        e.splitAmong.includes(memberId)
+    );
+
+    if (involved) {
+      showToast("Cannot remove member with expenses");
+      return;
+    }
+
+    if (memberToRemoveObj.role === "admin") {
+      const otherAdmins = trip.members.filter((m) => m.id !== memberId && m.role === "admin");
+      if (otherAdmins.length === 0 && trip.members.length > 1) {
+        showToast("Assign another admin before removing yourself");
+        return;
+      }
+    }
+
+    removeMember(tripId, memberId);
+    setEditingMember(null);
+    showToast("Member removed");
   };
 
   const handleEditTitle = (name: string, emoji: string) => {
@@ -373,7 +417,28 @@ export default function TripDetailPage() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {trip.expenses.map((expense) => {
+                  {/* Search Bar for Expenses */}
+                  <div className="relative mb-3">
+                    <Search
+                      size={14}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-[#5a5a6e]"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Search expenses by name or amount..."
+                      value={expenseSearch}
+                      onChange={(e) => setExpenseSearch(e.target.value)}
+                      className="w-full bg-[#15151d] border border-white/[0.06] rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-[#5a5a6e] outline-none focus:border-[#8b6fff]/40 transition-colors"
+                    />
+                  </div>
+                  <div className="h-px bg-white/[0.06] mb-3" />
+
+                  {filteredExpenses.length === 0 ? (
+                    <div className="text-center py-8 text-xs text-[#5a5a6e]">
+                      No expenses matching &quot;{expenseSearch}&quot;
+                    </div>
+                  ) : (
+                    filteredExpenses.map((expense) => {
                     const contributors =
                       expense.contributors && expense.contributors.length > 0
                         ? expense.contributors
@@ -492,9 +557,10 @@ export default function TripDetailPage() {
                           )}
                         </div>
                     );
-                  })}
-                </div>
-              )}
+                  })
+                )}
+              </div>
+            )}
 
               {/* Member Spending Summary */}
               {trip.expenses.length > 0 && (
@@ -668,13 +734,14 @@ export default function TripDetailPage() {
               exit={{ opacity: 0 }}
               onClick={() => setAddMemberOpen(false)}
             />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              transition={{ type: "spring", stiffness: 400, damping: 30 }}
-              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[calc(100%-2rem)] max-w-[400px] rounded-2xl border border-white/[0.08] bg-[#18181f] p-5"
-            >
+            <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                className="w-full max-w-[400px] rounded-2xl border border-white/[0.08] bg-[#18181f] p-5"
+              >
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-syne text-base font-bold text-white">Add Member</h3>
                 <motion.button
@@ -720,6 +787,7 @@ export default function TripDetailPage() {
                 Add Member
               </motion.button>
             </motion.div>
+            </div>
           </>
         )}
       </AnimatePresence>
@@ -756,7 +824,61 @@ export default function TripDetailPage() {
             onSubmit={handleEditMember}
             canPromote={canEdit && editingMember.role !== "admin"}
             onPromote={() => setMemberToPromote(editingMember)}
+            onRemove={canEdit ? () => setMemberToRemove(editingMember) : undefined}
           />
+        )}
+      </AnimatePresence>
+
+      {/* Remove Member Confirmation Modal */}
+      <AnimatePresence>
+        {memberToRemove && (
+          <motion.div
+            className="fixed inset-0 z-[100] flex items-center justify-center px-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <div
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={() => setMemberToRemove(null)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ type: "spring", stiffness: 400, damping: 30 }}
+              className="relative z-10 w-full max-w-[360px] rounded-2xl border border-white/[0.08] bg-[#18181f] p-5"
+            >
+              <div className="text-center mb-4">
+                <div className="w-14 h-14 rounded-full bg-red-500/15 flex items-center justify-center text-2xl mx-auto mb-3">
+                  ⚠️
+                </div>
+                <h3 className="font-syne text-base font-bold text-white mb-1">Remove member?</h3>
+                <p className="text-xs text-[#5a5a6e]">
+                  Are you sure you want to remove &ldquo;{memberToRemove.name}&rdquo; from this split?
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <motion.button
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => setMemberToRemove(null)}
+                  className="flex-1 py-3 rounded-xl text-sm font-bold text-white bg-white/5 border border-white/[0.08]"
+                >
+                  Cancel
+                </motion.button>
+                <motion.button
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => {
+                    handleRemoveMember(memberToRemove.id);
+                    setMemberToRemove(null);
+                  }}
+                  className="flex-1 py-3 rounded-xl text-sm font-bold text-white bg-red-500"
+                >
+                  Remove
+                </motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
 

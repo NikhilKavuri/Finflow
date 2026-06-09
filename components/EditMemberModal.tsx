@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { X, Crown } from "lucide-react";
+import { X, Crown, Trash2 } from "lucide-react";
 import type { SplitMember } from "@/lib/types";
 
 interface Props {
@@ -11,11 +11,12 @@ interface Props {
   onSubmit: (name: string, avatar: string) => void;
   canPromote?: boolean;
   onPromote?: () => void;
+  onRemove?: () => void;
 }
 
 const AVATAR_OPTIONS = ["😎", "🤩", "😊", "🥳", "🧐", "😈", "🦊", "🐻", "🦁", "🐸", "🌸", "⭐"];
 
-export default function EditMemberModal({ member, onClose, onSubmit, canPromote = false, onPromote }: Props) {
+export default function EditMemberModal({ member, onClose, onSubmit, canPromote = false, onPromote, onRemove }: Props) {
   const [name, setName] = useState(member.name);
   const [avatar, setAvatar] = useState(member.avatar);
   const [error, setError] = useState("");
@@ -48,15 +49,27 @@ export default function EditMemberModal({ member, onClose, onSubmit, canPromote 
           transition={{ type: "spring", stiffness: 400, damping: 30 }}
         >
           <div className="flex items-center justify-between mb-4">
-          <h3 className="font-syne text-lg font-bold text-white">Edit Member</h3>
-          <motion.button
-            whileTap={{ scale: 0.88 }}
-            onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-[#9898aa]"
-          >
-            <X size={16} />
-          </motion.button>
-        </div>
+            <h3 className="font-syne text-lg font-bold text-white">Edit Member</h3>
+            <div className="flex items-center gap-2">
+              {onRemove && (
+                <motion.button
+                  whileTap={{ scale: 0.88 }}
+                  onClick={onRemove}
+                  className="w-8 h-8 rounded-full bg-red-500/10 flex items-center justify-center text-red-400 hover:bg-red-500/20 transition-colors"
+                  title="Remove Member"
+                >
+                  <Trash2 size={15} />
+                </motion.button>
+              )}
+              <motion.button
+                whileTap={{ scale: 0.88 }}
+                onClick={onClose}
+                className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-[#9898aa]"
+              >
+                <X size={16} />
+              </motion.button>
+            </div>
+          </div>
 
           {error && (
             <div className="mb-4 px-3 py-2 bg-[#ff4f6b]/10 border border-[#ff4f6b]/20 rounded-xl text-xs text-[#ff4f6b]">
