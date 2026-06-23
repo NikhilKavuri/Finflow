@@ -69,13 +69,13 @@ export function ExpenseCard({ expense, onEdit, onDelete }: ExpenseCardProps) {
         </Text>
         <View style={styles.actionsRow}>
           {onEdit && (
-            <TouchableOpacity onPress={onEdit} style={styles.actionBtn}>
-              <Feather name="edit-2" size={14} color="#9898aa" />
+            <TouchableOpacity onPress={onEdit} style={[styles.actionBtn, styles.actionBtnEdit]}>
+              <Feather name="edit-2" size={12} color="#8b6fff" />
             </TouchableOpacity>
           )}
           {onDelete && (
-            <TouchableOpacity onPress={onDelete} style={styles.actionBtn}>
-              <Feather name="trash-2" size={14} color="#ef4444" />
+            <TouchableOpacity onPress={onDelete} style={[styles.actionBtn, styles.actionBtnDelete]}>
+              <Feather name="trash-2" size={12} color="#ef4444" />
             </TouchableOpacity>
           )}
         </View>
@@ -147,9 +147,20 @@ const styles = StyleSheet.create({
   },
   actionsRow: {
     flexDirection: "row",
-    gap: 4,
+    gap: 8,
+    marginTop: 4,
   },
   actionBtn: {
-    padding: 4,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  actionBtnEdit: {
+    backgroundColor: "rgba(108,71,255,0.1)",
+  },
+  actionBtnDelete: {
+    backgroundColor: "rgba(239,68,68,0.1)",
   },
 });

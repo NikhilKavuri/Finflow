@@ -145,6 +145,8 @@ interface ExpensesStore {
   state: AppState;
   hydrated: boolean;
   init: (uid: string | null) => Promise<void>;
+  refresh: () => Promise<void>;
+  reset: () => Promise<void>;
   updateState: (updater: (prev: AppState) => AppState) => void;
   completeOnboarding: (budget: number) => void;
   addTransaction: (tx: Omit<Transaction, "id">) => Transaction;
@@ -167,6 +169,23 @@ export const useExpensesStore = create<ExpensesStore>((set, get) => ({
   state: DEFAULT_STATE,
   hydrated: false,
 
+  reset: async () => {
+    await AsyncStorage.removeItem(STORAGE_KEY);
+    await AsyncStorage.removeItem(UID_KEY);
+    set({ state: DEFAULT_STATE, hydrated: false });
+  },
+
+  refresh: async () => {
+    const uid = await AsyncStorage.getItem(UID_KEY);
+    if (uid) {
+      const firestoreState = await loadExpensesFromFirestore(uid);
+      if (firestoreState && firestoreState.onboarded) {
+        set({ state: firestoreState, hydrated: true });
+        await saveStateAsync(firestoreState);
+      }
+    }
+  },
+
   init: async (uid: string | null) => {
     let resolvedUid = uid;
     if (!resolvedUid) {
@@ -175,13 +194,7 @@ export const useExpensesStore = create<ExpensesStore>((set, get) => ({
       await AsyncStorage.setItem(UID_KEY, resolvedUid);
     }
 
-    const localState = await loadStateAsync();
-    if (localState.onboarded) {
-      set({ state: localState, hydrated: true });
-      if (resolvedUid) syncExpensesToFirestore(resolvedUid, localState);
-      return;
-    }
-
+    // 1. Try Firebase First (Source of Truth)
     if (resolvedUid) {
       try {
         const firestoreState = await loadExpensesFromFirestore(resolvedUid);
@@ -198,9 +211,21 @@ export const useExpensesStore = create<ExpensesStore>((set, get) => ({
           await saveStateAsync(restoredState);
           return;
         }
-      } catch {}
+      } catch (err) {
+        console.warn("Firestore fetch failed, falling back to local state", err);
+      }
     }
 
+    // 2. Fallback to Local State
+    const localState = await loadStateAsync();
+    if (localState.onboarded) {
+      set({ state: localState, hydrated: true });
+      // If we got here, Firebase might be out of sync or offline, try to sync local -> firebase
+      if (resolvedUid) syncExpensesToFirestore(resolvedUid, localState);
+      return;
+    }
+
+    // 3. Default (Fresh install)
     set({ state: DEFAULT_STATE, hydrated: true });
   },
 

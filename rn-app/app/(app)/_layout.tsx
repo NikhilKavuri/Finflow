@@ -18,9 +18,9 @@ export default function AppLayout() {
       }}
     >
       <Tabs.Screen
-        name="overview"
+        name="home"
         options={{
-          title: "Overview",
+          title: "Home",
           tabBarIcon: ({ color, size }) => (
             <Feather name="home" size={size} color={color} />
           ),
@@ -29,7 +29,7 @@ export default function AppLayout() {
       <Tabs.Screen
         name="expenses"
         options={{
-          title: "Feed",
+          title: "Expenses",
           tabBarIcon: ({ color, size }) => (
             <Feather name="list" size={size} color={color} />
           ),
@@ -49,7 +49,7 @@ export default function AppLayout() {
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
               >
-                <Feather name="plus" size={24} color="#fff" />
+                <Feather name="plus" size={32} color="#fff" />
               </LinearGradient>
             </View>
           ),
@@ -61,7 +61,14 @@ export default function AppLayout() {
                 e.preventDefault();
                 router.push("/modals/add-expense");
               }}
-              style={[props.style, { marginTop: Platform.OS === "ios" ? -10 : -15 }]}
+              style={[
+                props.style,
+                { 
+                  // top: Platform.OS === "ios" ? -20 : -25,
+                  // justifyContent: 'center',
+                  // alignItems: 'center',
+                }
+              ]}
             />
           ),
         }}
@@ -93,6 +100,14 @@ export default function AppLayout() {
           href: null,
         }}
       />
+
+      {/* Hide index redirect file from the bar */}
+      <Tabs.Screen
+        name="index"
+        options={{
+          href: null,
+        }}
+      />
     </Tabs>
   );
 }
@@ -107,6 +122,11 @@ const styles = StyleSheet.create({
     height: Platform.OS === "ios" ? 92 : 72,
     elevation: 0,
     shadowOpacity: 0,
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    overflow: "visible", // Critical for floating the FAB up
   },
   tabBarLabel: {
     fontSize: 10,
@@ -121,17 +141,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   fab: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     justifyContent: "center",
     alignItems: "center",
     shadowColor: "#6c47ff",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 5,
-    borderWidth: 2,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
+    elevation: 8,
+    borderWidth: 4,
     borderColor: "#0a0a0f",
   },
 });

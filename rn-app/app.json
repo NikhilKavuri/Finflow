@@ -8,7 +8,7 @@
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "splash": {
-      "backgroundColor": "#0a0e27"
+      "backgroundColor": "#0a0a0f"
     },
     "assetBundlePatterns": [
       "**/*"

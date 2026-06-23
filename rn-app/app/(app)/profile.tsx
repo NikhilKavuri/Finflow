@@ -37,6 +37,7 @@ export default function ProfileScreen() {
   const {
     state,
     hydrated,
+    reset,
     updateBudget,
     addPaymentMethod,
     updatePaymentMethod,
@@ -72,6 +73,7 @@ export default function ProfileScreen() {
         onPress: async () => {
           setLoading(true);
           try {
+            await reset(); // Clear local state and AsyncStorage
             await signOut(auth);
             router.replace("/(auth)/login");
           } catch (error) {

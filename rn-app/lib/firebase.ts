@@ -13,8 +13,15 @@ import {
   signOut as firebaseSignOut,
   EmailAuthProvider,
   reauthenticateWithCredential,
+  GoogleAuthProvider,
+  signInWithCredential,
   type User,
 } from "firebase/auth";
+import * as AuthSession from "expo-auth-session";
+import * as WebBrowser from "expo-web-browser";
+
+// Complete the auth session on app return
+WebBrowser.maybeCompleteAuthSession();
 
 const readEnv = (expoKey: string, nextKey: string) =>
   process.env[expoKey] || process.env[nextKey] || "";
@@ -52,8 +59,50 @@ const auth = appsExist
       persistence: getReactNativePersistence(ReactNativeAsyncStorage),
     });
 
+// Google Sign-In using expo-auth-session
+const GOOGLE_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID || "";
+
+const discovery = AuthSession.useAutoDiscovery
+  ? undefined
+  : {
+      authorizationEndpoint: "https://accounts.google.com/o/oauth2/v2/auth",
+      tokenEndpoint: "https://oauth2.googleapis.com/token",
+      revocationEndpoint: "https://oauth2.googleapis.com/revoke",
+    };
+
 export async function signInWithGoogle(): Promise<User> {
-  throw new Error("Google sign-in is not configured for the native app.");
+  if (!GOOGLE_CLIENT_ID) {
+    throw new Error(
+      "Google Sign-In is not configured. Set EXPO_PUBLIC_GOOGLE_CLIENT_ID in your .env.local file."
+    );
+  }
+
+  const redirectUri = AuthSession.makeRedirectUri({ scheme: "finflow" });
+
+  const authRequest = new AuthSession.AuthRequest({
+    clientId: GOOGLE_CLIENT_ID,
+    scopes: ["openid", "profile", "email"],
+    redirectUri,
+    responseType: AuthSession.ResponseType.IdToken,
+    usePKCE: false,
+  });
+
+  const result = await authRequest.promptAsync({
+    authorizationEndpoint: "https://accounts.google.com/o/oauth2/v2/auth",
+    tokenEndpoint: "https://oauth2.googleapis.com/token",
+    revocationEndpoint: "https://oauth2.googleapis.com/revoke",
+  });
+
+  if (result.type === "success") {
+    const { id_token } = result.params;
+    const credential = GoogleAuthProvider.credential(id_token);
+    const userCredential = await signInWithCredential(auth, credential);
+    return userCredential.user;
+  } else if (result.type === "cancel" || result.type === "dismiss") {
+    throw new Error("Google Sign-In was cancelled.");
+  } else {
+    throw new Error("Google Sign-In failed. Please try again.");
+  }
 }
 
 export async function signUpWithEmail(email: string, password: string, displayName: string): Promise<User> {

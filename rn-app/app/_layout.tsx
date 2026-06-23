@@ -1,11 +1,13 @@
 import "../globals.css";
 import { Stack, useRouter, useSegments } from "expo-router";
-import { View, ActivityIndicator, StyleSheet } from "react-native";
+import { View, Text, StyleSheet, Dimensions } from "react-native";
 import { useEffect, useState, useCallback } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
+import { LinearGradient } from "expo-linear-gradient";
+import { BrandedLoader } from "@/components/BrandedLoader";
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -51,17 +53,17 @@ export default function RootLayout() {
     } else {
       // User is signed in but on auth screen or index screen — redirect to app
       if (inAuthGroup || segments.length === 0 || segments[0] === "index") {
-        router.replace("/(app)/overview");
+        router.replace("/(app)/home");
       }
     }
   }, [user, initializing, segments]);
 
   if (initializing) {
     return (
-      <View style={styles.loadingContainer}>
+      <>
         <StatusBar style="light" />
-        <ActivityIndicator size="large" color="#6366f1" />
-      </View>
+        <BrandedLoader />
+      </>
     );
   }
 
@@ -73,34 +75,39 @@ export default function RootLayout() {
           headerShown: false,
           contentStyle: { backgroundColor: "#0a0a0f" },
           animation: "fade",
+          animationDuration: 250,
         }}
       >
-        <Stack.Screen name="(auth)" />
-        <Stack.Screen name="(app)" />
-        <Stack.Screen 
-          name="modals/add-expense" 
-          options={{ 
-            presentation: "modal", 
-            animation: "slide_from_bottom" 
-          }} 
+        <Stack.Screen
+          name="(auth)"
+          options={{
+            animation: "fade",
+          }}
         />
-        <Stack.Screen 
-          name="modals/bank-modal" 
-          options={{ 
-            presentation: "modal", 
-            animation: "slide_from_bottom" 
-          }} 
+        <Stack.Screen
+          name="(app)"
+          options={{
+            animation: "fade",
+          }}
+        />
+        <Stack.Screen
+          name="modals/add-expense"
+          options={{
+            presentation: "modal",
+            animation: "slide_from_bottom",
+            animationDuration: 300,
+          }}
+        />
+        <Stack.Screen
+          name="modals/bank-modal"
+          options={{
+            presentation: "modal",
+            animation: "slide_from_bottom",
+            animationDuration: 300,
+          }}
         />
       </Stack>
     </>
   );
 }
 
-const styles = StyleSheet.create({
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#0a0e27",
-  },
-});

@@ -40,7 +40,7 @@ export function syncExpensesToFirestore(uid: string, state: AppState) {
   expenseTimer = setTimeout(async () => {
     try {
       const ref = doc(firestore, "users", uid, "data", "expenses");
-      await setDoc(ref, {
+      const payload = {
         budget: state.budget,
         budgetCycleStartDay: state.budgetCycleStartDay,
         transactions: state.transactions,
@@ -49,7 +49,13 @@ export function syncExpensesToFirestore(uid: string, state: AppState) {
         paymentMethods: state.paymentMethods,
         monthlyBudgets: state.monthlyBudgets || {},
         updatedAt: new Date().toISOString(),
-      });
+      };
+      
+      // Firestore throws an error if any field is strictly undefined.
+      // JSON serialization safely strips undefined keys from the object tree.
+      const cleanPayload = JSON.parse(JSON.stringify(payload));
+
+      await setDoc(ref, cleanPayload);
     } catch (error) {
       console.warn("Firestore expense sync failed:", error);
     }

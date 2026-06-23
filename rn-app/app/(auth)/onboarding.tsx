@@ -46,7 +46,7 @@ export default function OnboardingScreen() {
           updatedAt: new Date(),
         });
 
-        router.replace("/(app)/overview");
+        router.replace("/(app)/home");
       }
     } catch (err: any) {
       setError(err.message || "Setup failed");

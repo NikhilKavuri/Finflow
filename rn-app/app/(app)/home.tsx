@@ -11,7 +11,7 @@ import {
   Platform,
   StyleSheet,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "expo-router";
 import { auth } from "@/lib/firebase";
@@ -24,6 +24,7 @@ import { PaymentPlanCard } from "@/components/cards/PaymentPlanCard";
 import { PaymentBreakdown } from "@/components/cards/PaymentBreakdown";
 import { BankFilter } from "@/components/BankFilter";
 import { Feather } from "@expo/vector-icons";
+import { BrandedLoader } from "@/components/BrandedLoader";
 import {
   getCurrentMonthPrefix,
   getPreviousMonthPrefix,
@@ -46,10 +47,12 @@ const METHOD_TYPES: { type: PaymentMethod; label: string; emoji: string; icon: s
 
 export default function OverviewScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const user = auth.currentUser;
   const {
     state,
     hydrated,
+    refresh,
     updateBudget,
     updateMonthlyBudget,
     getBudgetForMonth,
@@ -120,7 +123,7 @@ export default function OverviewScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await new Promise((resolve) => setTimeout(resolve, 800));
+    await refresh();
     setRefreshing(false);
   };
 
@@ -194,11 +197,7 @@ export default function OverviewScreen() {
   };
 
   if (!hydrated) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#6c47ff" />
-      </View>
-    );
+    return <BrandedLoader />;
   }
 
   const handleOpenAddModal = () => {
@@ -225,9 +224,6 @@ export default function OverviewScreen() {
             <Text style={styles.userName}>{user?.displayName || "Finflow User"}</Text>
           </View>
           <View style={{ flexDirection: "row", gap: 12 }}>
-            <TouchableOpacity onPress={handleOpenAddModal} style={styles.plusBtn}>
-              <Feather name="plus" size={18} color="#fff" />
-            </TouchableOpacity>
             <TouchableOpacity style={styles.bellBtn}>
               <Feather name="bell" size={18} color="#9898aa" />
             </TouchableOpacity>
@@ -270,14 +266,20 @@ export default function OverviewScreen() {
           {/* Category Breakdown */}
           <CategoryBreakdown expenses={expenses} />
 
-          {/* Recent Spending activity */}
-          <View style={styles.sectionMargin}>
-            <Text style={styles.sectionTitle}>Recent Transactions</Text>
-            {expenses.length === 0 ? (
-              <Text style={styles.emptyText}>No expenses recorded this month.</Text>
-            ) : (
-              <SpendFeed expenses={expenses.slice(0, 5)} />
-            )}
+          {/* View All Expenses */}
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => setDetailOpen(true)}
+            style={styles.viewAllBtn}
+          >
+            <Feather name="list" size={16} color="#8b6fff" />
+            <Text style={styles.viewAllBtnText}>View All Expenses</Text>
+          </TouchableOpacity>
+
+          <View style={styles.tapCategoryCard}>
+            <Text style={styles.tapCategoryText}>
+              Tap a category above to view its spend feed.
+            </Text>
           </View>
         </View>
 
@@ -287,7 +289,7 @@ export default function OverviewScreen() {
       {/* DETAILED BUDGET OVERLAY MODAL */}
       <Modal visible={detailOpen} animationType="slide" transparent={false} onRequestClose={() => setDetailOpen(false)}>
         <View style={styles.modalFull}>
-          <SafeAreaView edges={["top"]} style={{ backgroundColor: "#0a0a0f" }}>
+          <View style={{ backgroundColor: "#0a0a0f", paddingTop: Math.max(insets.top, 16) }}>
             <View style={styles.modalHeader}>
               <TouchableOpacity onPress={() => setDetailOpen(false)} style={styles.backBtn}>
                 <Feather name="arrow-left" size={18} color="#9ca3af" />
@@ -298,7 +300,7 @@ export default function OverviewScreen() {
               </View>
               <View style={{ width: 40, height: 40 }} />
             </View>
-          </SafeAreaView>
+          </View>
 
           <ScrollView style={styles.flex1} contentContainerStyle={styles.contentPadding} showsVerticalScrollIndicator={false}>
             <BankFilter
@@ -402,7 +404,7 @@ export default function OverviewScreen() {
       {/* PAYMENT METHODS MODAL */}
       <Modal visible={paymentMethodsOpen} animationType="slide" transparent={false} onRequestClose={() => setPaymentMethodsOpen(false)}>
         <View style={styles.modalFull}>
-          <SafeAreaView edges={["top"]} style={{ backgroundColor: "#0a0a0f" }}>
+          <View style={{ backgroundColor: "#0a0a0f", paddingTop: Math.max(insets.top, 16) }}>
             <View style={styles.modalHeader}>
               <View>
                 <Text style={styles.modalTitle}>Payment Methods</Text>
@@ -419,7 +421,7 @@ export default function OverviewScreen() {
                 </TouchableOpacity>
               </View>
             </View>
-          </SafeAreaView>
+          </View>
 
           <ScrollView style={styles.flex1} contentContainerStyle={styles.contentPadding} showsVerticalScrollIndicator={false}>
             {methodFormOpen && (
@@ -513,6 +515,10 @@ const styles = StyleSheet.create({
   sectionMargin: { marginBottom: 24 },
   sectionTitle: { color: "#fff", fontSize: 18, fontWeight: "bold", marginBottom: 12 },
   emptyText: { color: "#5a5a6e", textAlign: "center", paddingVertical: 16 },
+  viewAllBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, backgroundColor: "#1e1e28", borderRadius: 16, borderWidth: 1, borderColor: "rgba(255, 255, 255, 0.06)", marginBottom: 16 },
+  viewAllBtnText: { color: "#9898aa", fontSize: 14, fontWeight: "600" },
+  tapCategoryCard: { backgroundColor: "rgba(255, 255, 255, 0.02)", borderRadius: 16, paddingVertical: 24, paddingHorizontal: 16, borderWidth: 1, borderColor: "rgba(255, 255, 255, 0.03)", alignItems: "center" },
+  tapCategoryText: { color: "#9898aa", fontSize: 13, textAlign: "center" },
   
   modalFull: { flex: 1, backgroundColor: "#0a0a0f" },
   modalHeader: { paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.06)", flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
