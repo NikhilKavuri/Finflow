@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "FinFlow",
+    "slug": "finflow",
+    "scheme": "finflow",
+    "version": "1.0.0",
+    "sdkVersion": "54.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "backgroundColor": "#0a0e27"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.finflow.app",
+      "buildNumber": "1"
+    },
+    "android": {
+      "package": "com.finflow.app",
+      "versionCode": 1
+    },
+    "web": {},
+    "plugins": ["expo-router", "expo-font"]
+  }
+}
