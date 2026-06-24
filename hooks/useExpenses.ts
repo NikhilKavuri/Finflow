@@ -119,10 +119,10 @@ function applyGroupBankDeltas(
   );
 }
 
-function loadState(): AppState {
-  if (typeof window === "undefined") return DEFAULT_STATE;
+function loadState(uid: string | null): AppState {
+  if (typeof window === "undefined" || !uid) return DEFAULT_STATE;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(`${STORAGE_KEY}_${uid}`);
     if (!raw) return DEFAULT_STATE;
     const parsed = { ...DEFAULT_STATE, ...JSON.parse(raw) };
     return {
@@ -148,9 +148,10 @@ function loadState(): AppState {
   }
 }
 
-function saveState(state: AppState) {
+function saveState(state: AppState, uid: string | null) {
+  if (!uid) return;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(`${STORAGE_KEY}_${uid}`, JSON.stringify(state));
   } catch {}
 }
 
@@ -167,7 +168,7 @@ export function useExpenses() {
       if (uid) uidRef.current = uid;
 
       // 1. Always try localStorage first — it's synchronous and always the freshest
-      const localState = loadState();
+      const localState = loadState(uid);
       const hasLocalData = localState.onboarded;
 
       if (hasLocalData) {
@@ -192,7 +193,7 @@ export function useExpenses() {
               paymentMethods: normalizePaymentMethods(firestoreState.paymentMethods),
             };
             setState(restoredState);
-            saveState(restoredState); // Cache locally
+            saveState(restoredState, uid); // Cache locally
             setHydrated(true);
             return;
           }
@@ -212,8 +213,8 @@ export function useExpenses() {
   const updateState = useCallback((updater: (prev: AppState) => AppState) => {
     setState((prev) => {
       const next = updater(prev);
-      saveState(next);
       const uid = uidRef.current || localStorage.getItem(UID_KEY);
+      saveState(next, uid);
       if (uid) syncExpensesToFirestore(uid, next);
       return next;
     });

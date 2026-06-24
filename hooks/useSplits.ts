@@ -22,10 +22,10 @@ import {
 const SPLITS_KEY = "finflow_trips"; // Keep original key for backward compat
 const UID_KEY = "finflow_uid";
 
-function loadLocalSplits(): SplitSession[] {
-  if (typeof window === "undefined") return [];
+function loadLocalSplits(uid: string | null): SplitSession[] {
+  if (typeof window === "undefined" || !uid) return [];
   try {
-    const raw = localStorage.getItem(SPLITS_KEY);
+    const raw = localStorage.getItem(`${SPLITS_KEY}_${uid}`);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
@@ -34,9 +34,10 @@ function loadLocalSplits(): SplitSession[] {
   }
 }
 
-function saveLocalSplits(splits: SplitSession[]) {
+function saveLocalSplits(splits: SplitSession[], uid: string | null) {
+  if (!uid) return;
   try {
-    localStorage.setItem(SPLITS_KEY, JSON.stringify(splits));
+    localStorage.setItem(`${SPLITS_KEY}_${uid}`, JSON.stringify(splits));
   } catch {}
 }
 
@@ -154,7 +155,7 @@ export function useSplits() {
       uidRef.current = uid ?? null;
 
       // 1. Always try localStorage first — it's synchronous and always the freshest
-      const localSplits = loadLocalSplits();
+      const localSplits = loadLocalSplits(uid);
 
       if (localSplits.length > 0) {
         setSplits(localSplits);
@@ -166,7 +167,7 @@ export function useSplits() {
           const firestoreSplits = await loadSplitsFromFirestore(uid);
           if (firestoreSplits && firestoreSplits.length > 0) {
             setSplits(firestoreSplits);
-            saveLocalSplits(firestoreSplits); // Cache locally
+            saveLocalSplits(firestoreSplits, uid); // Cache locally
           }
         } catch {}
       }
@@ -204,7 +205,7 @@ export function useSplits() {
     setSplits((prev) => {
       const next = updater(prev);
       const uid = uidRef.current || localStorage.getItem(UID_KEY);
-      saveLocalSplits(next);
+      saveLocalSplits(next, uid);
       if (uid) syncSplitsToFirestore(uid, next);
       return next;
     });
@@ -639,7 +640,7 @@ export function useSplits() {
         const next = splits.filter((t) => t.id !== splitId);
         setSplits(next);
         const uid = uidRef.current || localStorage.getItem(UID_KEY);
-        saveLocalSplits(next);
+        saveLocalSplits(next, uid);
         if (uid) {
           await syncSplitsToFirestoreImmediate(uid, next);
         }
