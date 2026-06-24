@@ -86,6 +86,42 @@ export async function loadExpensesFromFirestore(uid: string): Promise<AppState |
   }
 }
 
+/**
+ * Subscribe to app state (expenses) from Firestore
+ */
+export function subscribeToExpenses(
+  uid: string,
+  callback: (state: AppState) => void
+): () => void {
+  if (!db || !isFirebaseConfigured()) return () => {};
+
+  const firestore = db as Firestore;
+  const ref = doc(firestore, "users", uid, "data", "expenses");
+
+  const unsubscribe = onSnapshot(
+    ref,
+    (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        callback({
+          budget: data.budget ?? 80000,
+          budgetCycleStartDay: data.budgetCycleStartDay ?? 5,
+          transactions: Array.isArray(data.transactions) ? data.transactions : [],
+          onboarded: data.onboarded ?? false,
+          banks: Array.isArray(data.banks) ? data.banks : [{ id: "default", name: "Default Bank" }],
+          paymentMethods: Array.isArray(data.paymentMethods) ? data.paymentMethods : [],
+          monthlyBudgets: data.monthlyBudgets && typeof data.monthlyBudgets === "object" ? data.monthlyBudgets : {},
+        });
+      }
+    },
+    (error) => {
+      console.warn("Firestore expense subscription error:", error);
+    }
+  );
+
+  return unsubscribe;
+}
+
 // ── Split sync (renamed from trip sync) ─────────────────────
 
 /**

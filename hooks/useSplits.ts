@@ -154,20 +154,22 @@ export function useSplits() {
       const uid = user?.uid || localStorage.getItem(UID_KEY);
       uidRef.current = uid ?? null;
 
-      // 1. Always try localStorage first — it's synchronous and always the freshest
+      // 1. Load from localStorage for immediate render
       const localSplits = loadLocalSplits(uid);
-
       if (localSplits.length > 0) {
         setSplits(localSplits);
-        // Sync to Firestore as backup
-        if (uid) syncSplitsToFirestore(uid, localSplits);
-      } else if (uid) {
-        // 2. No local data — try recovering from Firestore
+      }
+
+      // 2. Always fetch from Firestore to ensure we have the latest multi-device state
+      if (uid) {
         try {
           const firestoreSplits = await loadSplitsFromFirestore(uid);
           if (firestoreSplits && firestoreSplits.length > 0) {
             setSplits(firestoreSplits);
-            saveLocalSplits(firestoreSplits, uid); // Cache locally
+            saveLocalSplits(firestoreSplits, uid); // Update local cache with remote truth
+          } else if (localSplits.length > 0) {
+            // Only sync local to remote if remote is completely empty
+            syncSplitsToFirestore(uid, localSplits);
           }
         } catch {}
       }

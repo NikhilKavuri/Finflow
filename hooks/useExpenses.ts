@@ -5,7 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import type { AppState, Transaction, Bank, PaymentMethodConfig, SubExpense } from "@/lib/types";
 import { syncGroupTransactionFields } from "@/lib/transactions";
 import { getTodayISO } from "@/lib/utils";
-import { syncExpensesToFirestore, loadExpensesFromFirestore } from "@/lib/firestore";
+import { syncExpensesToFirestore, loadExpensesFromFirestore, subscribeToExpenses } from "@/lib/firestore";
 
 const STORAGE_KEY = "finflow_state";
 const UID_KEY = "finflow_uid";
@@ -161,8 +161,10 @@ export function useExpenses() {
   const [hydrated, setHydrated] = useState(false);
   const uidRef = useRef<string | null>(null);
 
-  // Hydrate: localStorage-first, Firestore as recovery fallback
+  // Hydrate: localStorage-first, Firestore as recovery fallback and realtime sync
   useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
+
     const init = async () => {
       const uid = user?.uid || localStorage.getItem(UID_KEY);
       if (uid) uidRef.current = uid;
@@ -176,38 +178,71 @@ export function useExpenses() {
         setHydrated(true);
         // Sync to Firestore as backup
         if (uid) syncExpensesToFirestore(uid, localState);
-        return;
-      }
-
-      // 2. No local data — try recovering from Firestore (new device / cleared cache)
-      if (uid) {
-        try {
-          const firestoreState = await loadExpensesFromFirestore(uid);
-          if (firestoreState && firestoreState.onboarded) {
-            const restoredState: AppState = {
-              ...firestoreState,
-              budgetCycleStartDay: normalizeDay(
-                firestoreState.budgetCycleStartDay,
-                DEFAULT_STATE.budgetCycleStartDay
-              ),
-              paymentMethods: normalizePaymentMethods(firestoreState.paymentMethods),
-            };
-            setState(restoredState);
-            saveState(restoredState, uid); // Cache locally
+      } else {
+        // 2. No local data — try recovering from Firestore (new device / cleared cache)
+        if (uid) {
+          try {
+            const firestoreState = await loadExpensesFromFirestore(uid);
+            if (firestoreState && firestoreState.onboarded) {
+              const restoredState: AppState = {
+                ...firestoreState,
+                budgetCycleStartDay: normalizeDay(
+                  firestoreState.budgetCycleStartDay,
+                  DEFAULT_STATE.budgetCycleStartDay
+                ),
+                paymentMethods: normalizePaymentMethods(firestoreState.paymentMethods),
+              };
+              setState(restoredState);
+              saveState(restoredState, uid); // Cache locally
+              setHydrated(true);
+            } else {
+              setState(DEFAULT_STATE);
+              setHydrated(true);
+            }
+          } catch {
+            setState(DEFAULT_STATE);
             setHydrated(true);
-            return;
           }
-        } catch {
-          // Firestore failed
+        } else {
+          // 3. No data anywhere — fresh start
+          setState(DEFAULT_STATE);
+          setHydrated(true);
         }
       }
 
-      // 3. No data anywhere — fresh start
-      setState(DEFAULT_STATE);
-      setHydrated(true);
+      // 4. Subscribe to realtime updates from Firestore
+      if (uid) {
+        unsubscribe = subscribeToExpenses(uid, (firestoreState) => {
+          if (firestoreState && firestoreState.onboarded) {
+            setState((prev) => {
+              const restoredState: AppState = {
+                ...firestoreState,
+                budgetCycleStartDay: normalizeDay(
+                  firestoreState.budgetCycleStartDay,
+                  DEFAULT_STATE.budgetCycleStartDay
+                ),
+                paymentMethods: normalizePaymentMethods(firestoreState.paymentMethods),
+              };
+              
+              // Only update if there's a difference. We can do a stringify check to avoid unnecessary re-renders.
+              // However, since AppState changes often, stringify might be slow, but it's safe.
+              // For now, updating state directly is fine since it's triggered by actual DB changes.
+              saveState(restoredState, uid);
+              return restoredState;
+            });
+            setHydrated(true);
+          }
+        });
+      }
     };
 
     init();
+
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
   }, [user?.uid]);
 
   const updateState = useCallback((updater: (prev: AppState) => AppState) => {
