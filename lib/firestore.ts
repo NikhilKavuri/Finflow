@@ -23,13 +23,40 @@ import type { TripSession } from "./types";
 
 // Debounce helpers
 let expenseTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingExpenseSync: (() => void) | null = null;
 let splitTimer: ReturnType<typeof setTimeout> | null = null;
 let splitInvitesReadable = true;
+
+/** Flush any pending expense sync immediately */
+function flushPendingExpenseSync() {
+  if (expenseTimer) {
+    clearTimeout(expenseTimer);
+    expenseTimer = null;
+  }
+  if (pendingExpenseSync) {
+    pendingExpenseSync();
+  }
+}
+
+if (typeof window !== "undefined") {
+  // Flush on page close — fires the setDoc (fire-and-forget, Firestore SDK
+  // keeps the connection alive long enough for this to succeed in most cases)
+  window.addEventListener("beforeunload", flushPendingExpenseSync);
+
+  // Also flush when the tab is hidden — more reliable on mobile and
+  // triggers before beforeunload in most browsers
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      flushPendingExpenseSync();
+    }
+  });
+}
 
 // ── Expense sync ────────────────────────────────────────────
 
 /**
- * Save app state (expenses) to Firestore, debounced
+ * Save app state (expenses) to Firestore, debounced (500ms).
+ * Pending writes are auto-flushed on beforeunload / visibilitychange.
  */
 export function syncExpensesToFirestore(uid: string, state: AppState) {
   if (!db || !isFirebaseConfigured()) return;
@@ -37,10 +64,12 @@ export function syncExpensesToFirestore(uid: string, state: AppState) {
   const firestore = db as Firestore;
 
   if (expenseTimer) clearTimeout(expenseTimer);
-  expenseTimer = setTimeout(async () => {
+  
+  pendingExpenseSync = () => {
+    pendingExpenseSync = null;
     try {
       const ref = doc(firestore, "users", uid, "data", "expenses");
-      await setDoc(ref, {
+      setDoc(ref, {
         budget: state.budget,
         budgetCycleStartDay: state.budgetCycleStartDay,
         transactions: state.transactions,
@@ -48,13 +77,20 @@ export function syncExpensesToFirestore(uid: string, state: AppState) {
         banks: state.banks,
         paymentMethods: state.paymentMethods,
         monthlyBudgets: state.monthlyBudgets || {},
-        updatedAt: new Date().toISOString(),
+        updatedAt: state.updatedAt || Date.now(),
       });
     } catch (error) {
       console.warn("Firestore expense sync failed:", error);
     }
-  }, 2000); // 2s debounce
+  };
+
+  expenseTimer = setTimeout(() => {
+    if (pendingExpenseSync) {
+      pendingExpenseSync();
+    }
+  }, 500); // 500ms debounce — fast enough to survive most reloads
 }
+
 
 /**
  * Load app state from Firestore
@@ -77,6 +113,7 @@ export async function loadExpensesFromFirestore(uid: string): Promise<AppState |
         banks: Array.isArray(data.banks) ? data.banks : [{ id: "default", name: "Default Bank" }],
         paymentMethods: Array.isArray(data.paymentMethods) ? data.paymentMethods : [],
         monthlyBudgets: data.monthlyBudgets && typeof data.monthlyBudgets === "object" ? data.monthlyBudgets : {},
+        updatedAt: typeof data.updatedAt === "number" ? data.updatedAt : undefined,
       };
     }
     return null;
@@ -111,6 +148,7 @@ export function subscribeToExpenses(
           banks: Array.isArray(data.banks) ? data.banks : [{ id: "default", name: "Default Bank" }],
           paymentMethods: Array.isArray(data.paymentMethods) ? data.paymentMethods : [],
           monthlyBudgets: data.monthlyBudgets && typeof data.monthlyBudgets === "object" ? data.monthlyBudgets : {},
+          updatedAt: typeof data.updatedAt === "number" ? data.updatedAt : undefined,
         });
       }
     },

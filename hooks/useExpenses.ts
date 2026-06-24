@@ -160,8 +160,10 @@ export function useExpenses() {
   const [state, setState] = useState<AppState>(DEFAULT_STATE);
   const [hydrated, setHydrated] = useState(false);
   const uidRef = useRef<string | null>(null);
+  // Track whether a local write just happened so we can ignore the echo from onSnapshot
+  const localWriteRef = useRef(false);
 
-  // Hydrate: localStorage-first, Firestore as recovery fallback and realtime sync
+  // Hydrate: show localStorage instantly, then reconcile with Firestore (source of truth)
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
 
@@ -169,50 +171,63 @@ export function useExpenses() {
       const uid = user?.uid || localStorage.getItem(UID_KEY);
       if (uid) uidRef.current = uid;
 
-      // 1. Always try localStorage first — it's synchronous and always the freshest
+      // 1. Load localStorage for instant display
       const localState = loadState(uid);
       const hasLocalData = localState.onboarded;
 
       if (hasLocalData) {
         setState(localState);
         setHydrated(true);
-        // Sync to Firestore as backup
-        if (uid) syncExpensesToFirestore(uid, localState);
-      } else {
-        // 2. No local data — try recovering from Firestore (new device / cleared cache)
-        if (uid) {
-          try {
-            const firestoreState = await loadExpensesFromFirestore(uid);
-            if (firestoreState && firestoreState.onboarded) {
-              const restoredState: AppState = {
-                ...firestoreState,
-                budgetCycleStartDay: normalizeDay(
-                  firestoreState.budgetCycleStartDay,
-                  DEFAULT_STATE.budgetCycleStartDay
-                ),
-                paymentMethods: normalizePaymentMethods(firestoreState.paymentMethods),
-              };
-              setState(restoredState);
-              saveState(restoredState, uid); // Cache locally
-              setHydrated(true);
+      }
+
+      // 2. Always check Firestore — it's the source of truth across devices
+      if (uid) {
+        try {
+          const firestoreState = await loadExpensesFromFirestore(uid);
+          if (firestoreState && firestoreState.onboarded) {
+            const remoteState: AppState = {
+              ...firestoreState,
+              budgetCycleStartDay: normalizeDay(
+                firestoreState.budgetCycleStartDay,
+                DEFAULT_STATE.budgetCycleStartDay
+              ),
+              paymentMethods: normalizePaymentMethods(firestoreState.paymentMethods),
+            };
+
+            // Use whichever is newer: local or Firestore
+            const localTs = localState.updatedAt || 0;
+            const remoteTs = remoteState.updatedAt || 0;
+
+            if (remoteTs >= localTs || !hasLocalData) {
+              // Firestore is newer (or same) — use it
+              setState(remoteState);
+              saveState(remoteState, uid);
             } else {
-              setState(DEFAULT_STATE);
-              setHydrated(true);
+              // Local is newer — push it to Firestore
+              syncExpensesToFirestore(uid, localState);
             }
-          } catch {
+            setHydrated(true);
+          } else if (!hasLocalData) {
+            // No data anywhere — fresh start
             setState(DEFAULT_STATE);
             setHydrated(true);
           }
-        } else {
-          // 3. No data anywhere — fresh start
-          setState(DEFAULT_STATE);
-          setHydrated(true);
+        } catch {
+          // Firestore failed — keep whatever we loaded from localStorage
+          if (!hasLocalData) {
+            setState(DEFAULT_STATE);
+            setHydrated(true);
+          }
         }
-      }
 
-      // 4. Subscribe to realtime updates from Firestore
-      if (uid) {
+        // 3. Subscribe to realtime updates from Firestore for cross-browser sync
         unsubscribe = subscribeToExpenses(uid, (firestoreState) => {
+          // Skip echo from our own writes
+          if (localWriteRef.current) {
+            localWriteRef.current = false;
+            return;
+          }
+
           if (firestoreState && firestoreState.onboarded) {
             setState((prev) => {
               const restoredState: AppState = {
@@ -223,16 +238,24 @@ export function useExpenses() {
                 ),
                 paymentMethods: normalizePaymentMethods(firestoreState.paymentMethods),
               };
-              
-              // Only update if there's a difference. We can do a stringify check to avoid unnecessary re-renders.
-              // However, since AppState changes often, stringify might be slow, but it's safe.
-              // For now, updating state directly is fine since it's triggered by actual DB changes.
+
+              // Only update if Firestore has newer data than local
+              const localTs = prev.updatedAt || 0;
+              const remoteTs = restoredState.updatedAt || 0;
+              if (remoteTs <= localTs) {
+                return prev;
+              }
+
               saveState(restoredState, uid);
               return restoredState;
             });
             setHydrated(true);
           }
         });
+      } else if (!hasLocalData) {
+        // No uid and no local data — fresh start
+        setState(DEFAULT_STATE);
+        setHydrated(true);
       }
     };
 
@@ -245,12 +268,17 @@ export function useExpenses() {
     };
   }, [user?.uid]);
 
+
   const updateState = useCallback((updater: (prev: AppState) => AppState) => {
     setState((prev) => {
       const next = updater(prev);
+      next.updatedAt = Date.now(); // Stamp the local update
       const uid = uidRef.current || localStorage.getItem(UID_KEY);
       saveState(next, uid);
-      if (uid) syncExpensesToFirestore(uid, next);
+      if (uid) {
+        localWriteRef.current = true; // Skip the echo from onSnapshot
+        syncExpensesToFirestore(uid, next);
+      }
       return next;
     });
   }, []);

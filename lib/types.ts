@@ -44,6 +44,7 @@ export interface AppState {
   paymentMethods: PaymentMethodConfig[];
   /** Per-month budgets keyed by month prefix e.g. "2026-05" → 80000 */
   monthlyBudgets?: Record<string, number>;
+  updatedAt?: number;
 }
 
 // ── Payment Method Config ───────────────────────────────────
