@@ -69,7 +69,7 @@ export function syncExpensesToFirestore(uid: string, state: AppState) {
     pendingExpenseSync = null;
     try {
       const ref = doc(firestore, "users", uid, "data", "expenses");
-      setDoc(ref, {
+      const payload = {
         budget: state.budget,
         budgetCycleStartDay: state.budgetCycleStartDay,
         transactions: state.transactions,
@@ -78,7 +78,9 @@ export function syncExpensesToFirestore(uid: string, state: AppState) {
         paymentMethods: state.paymentMethods,
         monthlyBudgets: state.monthlyBudgets || {},
         updatedAt: state.updatedAt || Date.now(),
-      });
+      };
+      const cleanPayload = JSON.parse(JSON.stringify(payload));
+      setDoc(ref, cleanPayload);
     } catch (error) {
       console.warn("Firestore expense sync failed:", error);
     }
@@ -686,3 +688,128 @@ export function subscribeToNotifications(
 export const syncTripsToFirestore = syncSplitsToFirestore;
 export const syncTripsToFirestoreImmediate = syncSplitsToFirestoreImmediate;
 export const loadTripsFromFirestore = loadSplitsFromFirestore;
+
+/**
+ * Migrates data from all old UIDs associated with this email into the email document.
+ */
+export async function migrateAndMergeUserData(uid: string, email: string) {
+  if (!db || !isFirebaseConfigured()) return;
+
+  const firestore = db as Firestore;
+  const lowerEmail = email.trim().toLowerCase();
+
+  try {
+    const migrationRef = doc(firestore, "users", lowerEmail);
+    const migrationSnap = await getDoc(migrationRef);
+    if (migrationSnap.exists() && migrationSnap.data()?.migrated) {
+      return; 
+    }
+
+    const profilesQuery = query(
+      collection(firestore, "userProfiles"),
+      where("email", "==", lowerEmail)
+    );
+    const profilesSnap = await getDocs(profilesQuery);
+    if (profilesSnap.empty) return;
+
+    const uidsToMerge = profilesSnap.docs.map(d => d.id);
+
+    let combinedExpenses: AppState | null = null;
+    let combinedTrips: SplitSession[] = [];
+    let combinedSharedSplitIds: string[] = [];
+
+    for (const oldUid of uidsToMerge) {
+      const expenseSnap = await getDoc(doc(firestore, "users", oldUid, "data", "expenses"));
+      if (expenseSnap.exists()) {
+        const data = expenseSnap.data() as AppState;
+        if (!combinedExpenses) {
+          combinedExpenses = { ...data };
+        } else {
+          const txMap = new Map((combinedExpenses.transactions || []).map(t => [t.id, t]));
+          for (const tx of (data.transactions || [])) {
+             if (!txMap.has(tx.id)) txMap.set(tx.id, tx);
+          }
+          combinedExpenses.transactions = Array.from(txMap.values());
+
+          const bankMap = new Map((combinedExpenses.banks || []).map(b => [b.id, b]));
+          for (const b of (data.banks || [])) {
+             if (!bankMap.has(b.id)) bankMap.set(b.id, b);
+          }
+          combinedExpenses.banks = Array.from(bankMap.values());
+
+          const pmMap = new Map((combinedExpenses.paymentMethods || []).map(pm => [pm.id, pm]));
+          for (const pm of (data.paymentMethods || [])) {
+             if (!pmMap.has(pm.id)) pmMap.set(pm.id, pm);
+          }
+          combinedExpenses.paymentMethods = Array.from(pmMap.values());
+
+          combinedExpenses.monthlyBudgets = { ...(combinedExpenses.monthlyBudgets || {}), ...(data.monthlyBudgets || {}) };
+          combinedExpenses.budget = Math.max(combinedExpenses.budget || 0, data.budget || 0);
+          combinedExpenses.onboarded = combinedExpenses.onboarded || data.onboarded;
+          combinedExpenses.updatedAt = Math.max(combinedExpenses.updatedAt || 0, data.updatedAt || 0);
+        }
+      }
+
+      const tripsSnap = await getDoc(doc(firestore, "users", oldUid, "data", "trips"));
+      if (tripsSnap.exists()) {
+        const data = tripsSnap.data();
+        if (Array.isArray(data.trips)) {
+           const tripMap = new Map(combinedTrips.map(t => [t.id, t]));
+           for (const t of data.trips) {
+             if (!tripMap.has(t.id)) tripMap.set(t.id, t);
+           }
+           combinedTrips = Array.from(tripMap.values());
+        }
+      }
+
+      const sharedSplitsSnap = await getDoc(doc(firestore, "users", oldUid, "data", "sharedSplits"));
+      if (sharedSplitsSnap.exists()) {
+        const data = sharedSplitsSnap.data();
+        if (Array.isArray(data.splitIds)) {
+          combinedSharedSplitIds = Array.from(new Set([...combinedSharedSplitIds, ...data.splitIds]));
+        }
+      }
+    }
+
+    const batch = writeBatch(firestore);
+    batch.set(doc(firestore, "users", lowerEmail), { migrated: true, migratedAt: new Date().toISOString() }, { merge: true });
+
+    if (combinedExpenses) {
+      batch.set(doc(firestore, "users", lowerEmail, "data", "expenses"), combinedExpenses);
+    }
+    if (combinedTrips.length > 0) {
+      batch.set(doc(firestore, "users", lowerEmail, "data", "trips"), { trips: combinedTrips, updatedAt: new Date().toISOString() });
+    }
+    if (combinedSharedSplitIds.length > 0) {
+      batch.set(doc(firestore, "users", lowerEmail, "data", "sharedSplits"), { splitIds: combinedSharedSplitIds, updatedAt: new Date().toISOString() });
+    }
+
+    await batch.commit();
+
+  } catch (error) {
+    console.warn("Firestore migration failed:", error);
+  }
+}
+
+export async function logUserDataNeatly(uid: string, email: string) {
+  const firestore = isFirebaseConfigured() ? db : null;
+  if (!firestore) return;
+
+  const lowerEmail = email.trim().toLowerCase();
+  
+  try {
+    // Try to fetch from UID-based path (which matches standard Firestore rules)
+    const expensesSnap = await getDoc(doc(firestore, "users", uid, "data", "expenses"));
+    const tripsSnap = await getDoc(doc(firestore, "users", uid, "data", "trips"));
+    const splitsSnap = await getDoc(doc(firestore, "users", uid, "data", "sharedSplits"));
+
+    console.group(`🗃️ User Data loaded for ${lowerEmail} (UID: ${uid})`);
+    console.log("💰 Expenses:", expensesSnap.exists() ? expensesSnap.data() : "None");
+    console.log("✈️ Trips:", tripsSnap.exists() ? tripsSnap.data() : "None");
+    console.log("🔗 Shared Splits:", splitsSnap.exists() ? splitsSnap.data() : "None");
+    console.groupEnd();
+  } catch (error) {
+    console.warn("Failed to log user data neatly:", error);
+  }
+}
+

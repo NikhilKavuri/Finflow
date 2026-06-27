@@ -20,7 +20,7 @@ import {
   logOut as firebaseLogOut,
   type User,
 } from "@/lib/firebase";
-import { saveUserProfile } from "@/lib/firestore";
+import { saveUserProfile, migrateAndMergeUserData, logUserDataNeatly } from "@/lib/firestore";
 
 const UID_KEY = "finflow_uid";
 
@@ -106,14 +106,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (firebaseUser) {
         setUser(firebaseUser);
         setAuthError(null);
-        localStorage.setItem(UID_KEY, firebaseUser.uid);
         
         const profile: { email: string; displayName: string; photoURL?: string } = {
           email: firebaseUser.email || "",
           displayName: firebaseUser.displayName || "User",
         };
+        
+        const userKey = profile.email.trim().toLowerCase() || firebaseUser.uid;
+        localStorage.setItem(UID_KEY, userKey);
+        
         if (firebaseUser.photoURL) {
           profile.photoURL = firebaseUser.photoURL;
+        }
+
+        // Trigger Migration to email-based storage
+        if (profile.email) {
+          try {
+            await migrateAndMergeUserData(firebaseUser.uid, profile.email);
+          } catch (e) {
+            console.warn("Migration error:", e);
+          }
         }
 
         // Save user profile to Firestore for email-based lookups
@@ -121,6 +133,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           await saveUserProfile(firebaseUser.uid, profile);
         } catch (error) {
           console.warn("Failed to save user profile:", error);
+        }
+
+        // Log user data to console for debugging
+        if (profile.email) {
+          logUserDataNeatly(firebaseUser.uid, profile.email);
         }
       } else {
         setUser(null);

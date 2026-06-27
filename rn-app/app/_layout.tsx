@@ -4,6 +4,8 @@ import { View, Text, StyleSheet, Dimensions } from "react-native";
 import { useEffect, useState, useCallback } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { migrateAndMergeUserData, saveUserProfile } from "@/lib/firestore";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
 import { LinearGradient } from "expo-linear-gradient";
@@ -28,6 +30,28 @@ export default function RootLayout() {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        const email = firebaseUser.email || "";
+        const userKey = email.trim().toLowerCase() || firebaseUser.uid;
+        await AsyncStorage.setItem("finflow_uid", userKey);
+
+        if (email) {
+          try {
+            await migrateAndMergeUserData(firebaseUser.uid, email);
+          } catch (e) {
+            console.warn("Migration failed:", e);
+          }
+        }
+
+        saveUserProfile(firebaseUser.uid, {
+          email,
+          displayName: firebaseUser.displayName || "User",
+          photoURL: firebaseUser.photoURL || undefined,
+        }).catch(() => {});
+      } else {
+        await AsyncStorage.removeItem("finflow_uid");
+      }
+
       setUser(firebaseUser);
 
       if (initializing) {
