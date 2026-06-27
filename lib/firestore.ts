@@ -64,7 +64,7 @@ export function syncExpensesToFirestore(uid: string, state: AppState) {
   const firestore = db as Firestore;
 
   if (expenseTimer) clearTimeout(expenseTimer);
-  
+
   pendingExpenseSync = () => {
     pendingExpenseSync = null;
     try {
@@ -132,7 +132,7 @@ export function subscribeToExpenses(
   uid: string,
   callback: (state: AppState) => void
 ): () => void {
-  if (!db || !isFirebaseConfigured()) return () => {};
+  if (!db || !isFirebaseConfigured()) return () => { };
 
   const firestore = db as Firestore;
   const ref = doc(firestore, "users", uid, "data", "expenses");
@@ -657,7 +657,7 @@ export function subscribeToNotifications(
   uid: string,
   callback: (notifications: SplitNotification[]) => void
 ): () => void {
-  if (!db || !isFirebaseConfigured()) return () => {};
+  if (!db || !isFirebaseConfigured()) return () => { };
 
   const firestore = db as Firestore;
 
@@ -702,7 +702,7 @@ export async function migrateAndMergeUserData(uid: string, email: string) {
     const migrationRef = doc(firestore, "users", lowerEmail);
     const migrationSnap = await getDoc(migrationRef);
     if (migrationSnap.exists() && migrationSnap.data()?.migrated) {
-      return; 
+      return;
     }
 
     const profilesQuery = query(
@@ -727,19 +727,19 @@ export async function migrateAndMergeUserData(uid: string, email: string) {
         } else {
           const txMap = new Map((combinedExpenses.transactions || []).map(t => [t.id, t]));
           for (const tx of (data.transactions || [])) {
-             if (!txMap.has(tx.id)) txMap.set(tx.id, tx);
+            if (!txMap.has(tx.id)) txMap.set(tx.id, tx);
           }
           combinedExpenses.transactions = Array.from(txMap.values());
 
           const bankMap = new Map((combinedExpenses.banks || []).map(b => [b.id, b]));
           for (const b of (data.banks || [])) {
-             if (!bankMap.has(b.id)) bankMap.set(b.id, b);
+            if (!bankMap.has(b.id)) bankMap.set(b.id, b);
           }
           combinedExpenses.banks = Array.from(bankMap.values());
 
           const pmMap = new Map((combinedExpenses.paymentMethods || []).map(pm => [pm.id, pm]));
           for (const pm of (data.paymentMethods || [])) {
-             if (!pmMap.has(pm.id)) pmMap.set(pm.id, pm);
+            if (!pmMap.has(pm.id)) pmMap.set(pm.id, pm);
           }
           combinedExpenses.paymentMethods = Array.from(pmMap.values());
 
@@ -754,11 +754,11 @@ export async function migrateAndMergeUserData(uid: string, email: string) {
       if (tripsSnap.exists()) {
         const data = tripsSnap.data();
         if (Array.isArray(data.trips)) {
-           const tripMap = new Map(combinedTrips.map(t => [t.id, t]));
-           for (const t of data.trips) {
-             if (!tripMap.has(t.id)) tripMap.set(t.id, t);
-           }
-           combinedTrips = Array.from(tripMap.values());
+          const tripMap = new Map(combinedTrips.map(t => [t.id, t]));
+          for (const t of data.trips) {
+            if (!tripMap.has(t.id)) tripMap.set(t.id, t);
+          }
+          combinedTrips = Array.from(tripMap.values());
         }
       }
 
@@ -796,18 +796,12 @@ export async function logUserDataNeatly(uid: string, email: string) {
   if (!firestore) return;
 
   const lowerEmail = email.trim().toLowerCase();
-  
+
   try {
     // Try to fetch from UID-based path (which matches standard Firestore rules)
     const expensesSnap = await getDoc(doc(firestore, "users", uid, "data", "expenses"));
     const tripsSnap = await getDoc(doc(firestore, "users", uid, "data", "trips"));
     const splitsSnap = await getDoc(doc(firestore, "users", uid, "data", "sharedSplits"));
-
-    console.group(`🗃️ User Data loaded for ${lowerEmail} (UID: ${uid})`);
-    console.log("💰 Expenses:", expensesSnap.exists() ? expensesSnap.data() : "None");
-    console.log("✈️ Trips:", tripsSnap.exists() ? tripsSnap.data() : "None");
-    console.log("🔗 Shared Splits:", splitsSnap.exists() ? splitsSnap.data() : "None");
-    console.groupEnd();
   } catch (error) {
     console.warn("Failed to log user data neatly:", error);
   }
