@@ -1,3 +1,4 @@
+import React, { useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -10,16 +11,25 @@ import {
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
+  Dimensions,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { useState, useMemo } from "react";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useSplits, calculateBalances, getSplitTotal, getMemberSpending } from "@/hooks/useSplits";
 import { TripCard } from "@/components/cards/TripCard";
 import { Feather } from "@expo/vector-icons";
 import { formatINR } from "@/lib/utils";
+import { LinearGradient } from "expo-linear-gradient";
+import MaskedView from "@react-native-masked-view/masked-view";
+import Animated, { FadeInUp, FadeOutUp, FadeIn, Layout } from "react-native-reanimated";
+import { BlurView } from "expo-blur";
 import type { SplitSession, SplitMember, SplitExpense } from "@/lib/types";
 
+const ICONS = ["💰", "🍕", "🏠", "🎓", "🤝", "🚗", "🎉", "✈️", "⛺", "🎪", "🛒", "🌴"];
+
+const AVATARS = ["😎", "🦁", "😊", "🥳", "🧐", "😈", "🦊", "🐻"];
+
 export default function SplitsScreen() {
+  const insets = useSafeAreaInsets();
   const {
     splits,
     hydrated,
@@ -31,35 +41,39 @@ export default function SplitsScreen() {
     deleteSplit,
   } = useSplits();
 
-  const [refreshing, setRefreshing] = useState(false);
-
   // Modals visibility
   const [createOpen, setCreateOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [addExpenseOpen, setAddExpenseOpen] = useState(false);
   const [settleOpen, setSettleOpen] = useState(false);
+  const [addMemberOpen, setAddMemberOpen] = useState(false);
 
   // Active Context
   const [selectedSplitId, setSelectedSplitId] = useState<string | null>(null);
 
-  // Create Split Form State
-  const [newSplitName, setNewSplitName] = useState("");
-  const [newSplitEmoji, setNewSplitEmoji] = useState("✈️");
-  const [newSplitMembers, setNewSplitMembers] = useState<{ name: string; email?: string }[]>([
-    { name: "You", email: "" },
+  // Tabs
+  const [activeTab, setActiveTab] = useState<"Expenses" | "Balances">("Expenses");
+
+  // Create/Edit Split Form State
+  const [splitName, setSplitName] = useState("");
+  const [splitEmoji, setSplitEmoji] = useState("💰");
+  const [splitMembers, setSplitMembers] = useState<{ name: string; email?: string, avatar: string }[]>([
+    { name: "You", email: "", avatar: "😎" },
   ]);
 
-  // Add Member Inline Form State
+  // Add Member Form State
   const [newMemberName, setNewMemberName] = useState("");
   const [newMemberEmail, setNewMemberEmail] = useState("");
 
-  // Add Split Expense Form State
+  // Expense State
   const [expenseDesc, setExpenseDesc] = useState("");
   const [expenseAmount, setExpenseAmount] = useState("");
   const [expensePaidBy, setExpensePaidBy] = useState("");
   const [expenseSplitAmong, setExpenseSplitAmong] = useState<string[]>([]);
+  const [expandedExpenseId, setExpandedExpenseId] = useState<string | null>(null);
 
-  // Settle Debt Form State
+  // Settlement State
   const [settleFrom, setSettleFrom] = useState("");
   const [settleTo, setSettleTo] = useState("");
   const [settleAmount, setSettleAmount] = useState("");
@@ -68,43 +82,45 @@ export default function SplitsScreen() {
     return splits.find((s) => s.id === selectedSplitId) || null;
   }, [splits, selectedSplitId]);
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    setRefreshing(false);
-  };
-
   // Create Split Helpers
   const handleOpenCreateModal = () => {
-    setNewSplitName("");
-    setNewSplitEmoji("✈️");
-    setNewSplitMembers([{ name: "You", email: "" }]);
+    setSplitName("");
+    setSplitEmoji("💰");
+    setSplitMembers([{ name: "You", email: "", avatar: "😎" }]);
     setCreateOpen(true);
   };
 
+  const handleOpenEditModal = () => {
+    if (!activeSplit) return;
+    setSplitName(activeSplit.name);
+    setSplitEmoji(activeSplit.emoji || "💰");
+    setEditOpen(true);
+  };
+
   const handleAddMemberRow = () => {
-    setNewSplitMembers([...newSplitMembers, { name: "", email: "" }]);
+    const randomAvatar = AVATARS[Math.floor(Math.random() * AVATARS.length)];
+    setSplitMembers([...splitMembers, { name: "", email: "", avatar: randomAvatar }]);
   };
 
   const handleMemberRowChange = (index: number, key: "name" | "email", val: string) => {
-    const next = [...newSplitMembers];
-    next[index][key] = val;
-    setNewSplitMembers(next);
+    const next = [...splitMembers];
+    next[index] = { ...next[index], [key]: val };
+    setSplitMembers(next);
   };
 
   const handleRemoveMemberRow = (index: number) => {
-    setNewSplitMembers(newSplitMembers.filter((_, i) => i !== index));
+    setSplitMembers(splitMembers.filter((_, i) => i !== index));
   };
 
   const handleSaveSplit = async () => {
-    const name = newSplitName.trim();
+    const name = splitName.trim();
     if (!name) {
       alert("Please enter a split name.");
       return;
     }
 
-    const validMembers = newSplitMembers
-      .map((m) => ({ name: m.name.trim(), email: m.email?.trim(), avatar: "👤" }))
+    const validMembers = splitMembers
+      .map((m) => ({ name: m.name.trim(), email: m.email?.trim(), avatar: m.avatar }))
       .filter((m) => m.name.length > 0);
 
     if (validMembers.length < 2) {
@@ -112,11 +128,53 @@ export default function SplitsScreen() {
       return;
     }
 
-    await createSplit(name, newSplitEmoji, validMembers);
+    await createSplit(name, splitEmoji, validMembers);
     setCreateOpen(false);
   };
 
-  // Split Expense Helpers
+  const handleUpdateSplit = () => {
+    alert("Split details updated!");
+    setEditOpen(false);
+  };
+
+  const handleDeleteSplit = () => {
+    if (!activeSplit) return;
+    Alert.alert("Delete Split Group", "Are you sure you want to delete this split group and all its expenses?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          setDetailOpen(false);
+          await deleteSplit(activeSplit.id);
+        },
+      },
+    ]);
+  };
+
+  // Add Member Helper
+  const handleAddMemberToActive = async () => {
+    if (!activeSplit) return;
+    const name = newMemberName.trim();
+    if (!name) {
+      alert("Please enter a member name.");
+      return;
+    }
+
+    const randomAvatar = AVATARS[Math.floor(Math.random() * AVATARS.length)];
+    await addMember(activeSplit.id, {
+      name,
+      email: newMemberEmail.trim() || undefined,
+      avatar: randomAvatar,
+      status: "accepted",
+    });
+
+    setNewMemberName("");
+    setNewMemberEmail("");
+    setAddMemberOpen(false);
+  };
+
+  // Expense Helpers
   const handleOpenAddExpense = () => {
     if (!activeSplit) return;
     setExpenseDesc("");
@@ -187,674 +245,909 @@ export default function SplitsScreen() {
     setSettleOpen(false);
   };
 
-  // Add Member Helper
-  const handleAddMemberToActive = async () => {
-    if (!activeSplit) return;
-    const name = newMemberName.trim();
-    if (!name) {
-      alert("Please enter a member name.");
-      return;
-    }
-
-    await addMember(activeSplit.id, {
-      name,
-      email: newMemberEmail.trim() || undefined,
-      avatar: "👤",
-      status: "accepted",
-    });
-
-    setNewMemberName("");
-    setNewMemberEmail("");
-  };
-
-  const handleDeleteSplit = () => {
-    if (!activeSplit) return;
-    Alert.alert("Delete Split Group", "Are you sure you want to delete this split group and all its expenses?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          setDetailOpen(false);
-          await deleteSplit(activeSplit.id);
-        },
-      },
-    ]);
-  };
-
   if (!hydrated) {
     return (
-      <View style={splitsStyles.loadingContainer}>
-        <ActivityIndicator size="large" color="#6366f1" />
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#6c47ff" />
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={splitsStyles.container} edges={["top"]}>
-      <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-        {/* Header */}
-        <View className="px-4 pt-8 pb-4 flex-row items-center justify-between">
-          <Text className="text-white text-2xl font-bold font-syne">Splits</Text>
-          <TouchableOpacity
-            onPress={handleOpenCreateModal}
-            className="w-10 h-10 rounded-full bg-indigo-650 items-center justify-center border border-indigo-500/20 shadow-md"
-          >
-            <Feather name="plus" size={20} color="white" />
-          </TouchableOpacity>
-        </View>
-
-        {/* Splits list */}
-        <View className="px-4 pb-20">
-          {splits.length === 0 ? (
-            <View className="items-center justify-center py-20 bg-gray-900/40 border border-gray-850 rounded-2xl p-6">
-              <Feather name="layers" size={40} color="#4b5563" />
-              <Text className="text-gray-400 font-bold text-center mt-3">No Splits Yet</Text>
-              <Text className="text-gray-600 text-xs text-center mt-1 mb-5">
-                Create a split group to divide trip expenses, dinner bills, or rent.
-              </Text>
-              <TouchableOpacity
-                onPress={handleOpenCreateModal}
-                className="bg-indigo-650 px-6 py-3 rounded-xl border border-indigo-500/20"
-              >
-                <Text className="text-white font-bold text-sm">Create Split Group</Text>
-              </TouchableOpacity>
+    <SafeAreaView style={styles.container} edges={["top"]}>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+        <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
+          {/* Header */}
+          <View style={styles.header}>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Feather name="git-pull-request" size={24} color="#6c47ff" style={{ transform: [{ rotate: "180deg" }] }} />
+              <MaskedView maskElement={<Text style={styles.headerTitleMask}>Splits</Text>}>
+                <LinearGradient colors={["#b8ff57", "#b8ff57"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+                  <Text style={[styles.headerTitleMask, { opacity: 0 }]}>Splits</Text>
+                </LinearGradient>
+              </MaskedView>
             </View>
-          ) : (
-            splits.map((split) => (
-              <TripCard
-                key={split.id}
-                split={split}
-                onPress={() => {
-                  setSelectedSplitId(split.id);
-                  setDetailOpen(true);
-                }}
-              />
-            ))
-          )}
-        </View>
-      </ScrollView>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+              <Feather name="bell" size={20} color="#5a5a6e" />
+              <Text style={{ color: "#5a5a6e", fontWeight: "700", fontSize: 12 }}>{splits.length} active</Text>
+            </View>
+          </View>
+
+          {/* Splits list */}
+          <View style={{ paddingHorizontal: 24 }}>
+            {splits.length === 0 ? (
+              <Animated.View entering={FadeIn.duration(400)} style={styles.emptyStateContainer}>
+                <View style={styles.emptyIconContainer}>
+                  <Text style={{ fontSize: 32 }}>💰</Text>
+                </View>
+                <Text style={styles.emptyTitle}>No splits yet</Text>
+                <Text style={styles.emptyDesc}>
+                  Create a split to share expenses with friends. Track who paid what and settle up easily.
+                </Text>
+                <TouchableOpacity onPress={handleOpenCreateModal} style={styles.createFirstBtn}>
+                  <Text style={styles.createFirstBtnText}>Create Your First Split 💰</Text>
+                </TouchableOpacity>
+              </Animated.View>
+            ) : (
+              splits.map((split) => (
+                <TripCard
+                  key={split.id}
+                  split={split}
+                  onPress={() => {
+                    setSelectedSplitId(split.id);
+                    setDetailOpen(true);
+                  }}
+                />
+              ))
+            )}
+          </View>
+        </ScrollView>
+
+        {/* Global FAB */}
+        {!detailOpen && (
+          <TouchableOpacity activeOpacity={0.9} onPress={handleOpenCreateModal} style={styles.fabContainer}>
+            <View style={styles.fabGlow} />
+            <LinearGradient colors={["#8b6fff", "#6c47ff"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.fab}>
+              <Feather name="plus" size={28} color="#fff" />
+            </LinearGradient>
+          </TouchableOpacity>
+        )}
+      </KeyboardAvoidingView>
 
       {/* ────────────────────────────────────────────────────────
           1. CREATE SPLIT MODAL
           ──────────────────────────────────────────────────────── */}
-      <Modal
-        visible={createOpen}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setCreateOpen(false)}
-      >
-        <View className="flex-1 bg-black/60 justify-end">
-          <TouchableOpacity
-            className="absolute inset-0"
-            activeOpacity={1}
-            onPress={() => setCreateOpen(false)}
-          />
-          <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : undefined}
-            className="bg-gray-900 rounded-t-3xl border-t border-gray-800 p-5 max-h-[92%]"
-          >
-            {/* Notch */}
-            <View className="align-self-center items-center mb-4">
-              <View className="h-1 w-10 rounded-full bg-gray-700" />
-            </View>
-
-            <View className="flex-row items-center justify-between mb-4">
-              <Text className="text-white text-lg font-bold font-syne">Create Split Group</Text>
-              <TouchableOpacity
-                onPress={() => setCreateOpen(false)}
-                className="w-8 h-8 rounded-full bg-gray-800 items-center justify-center"
-              >
-                <Feather name="x" size={16} color="#9ca3af" />
+      <Modal visible={createOpen} animationType="fade" transparent={true} onRequestClose={() => setCreateOpen(false)}>
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setCreateOpen(false)} />
+          <Animated.View entering={FadeInUp.duration(300).springify()} style={styles.modalCard}>
+            <BlurView intensity={50} tint="dark" style={StyleSheet.absoluteFill} />
+            
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>New Split</Text>
+              <TouchableOpacity onPress={() => setCreateOpen(false)} style={styles.closeBtn}>
+                <Feather name="x" size={16} color="#9898aa" />
               </TouchableOpacity>
             </View>
 
-            <ScrollView className="space-y-4 mb-4" showsVerticalScrollIndicator={false}>
-              {/* Group Name */}
-              <View className="mb-2">
-                <Text className="text-gray-500 text-[10px] font-bold uppercase tracking-wider mb-2">
-                  Group Name
-                </Text>
-                <TextInput
-                  value={newSplitName}
-                  onChangeText={setNewSplitName}
-                  placeholder="e.g. Goa Trip, Flatmates, Dinner"
-                  placeholderTextColor="#4b5563"
-                  className="bg-gray-950 border border-gray-800 text-white rounded-xl px-4 py-3 text-sm font-semibold"
-                />
-              </View>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <Text style={styles.inputLabel}>SPLIT NAME</Text>
+              <TextInput
+                value={splitName}
+                onChangeText={setSplitName}
+                placeholder="e.g. Roommates, Dinner, Road Trip..."
+                placeholderTextColor="#5a5a6e"
+                style={styles.input}
+              />
 
-              {/* Emoji */}
-              <View className="mb-2">
-                <Text className="text-gray-500 text-[10px] font-bold uppercase tracking-wider mb-2">
-                  Group Emoji
-                </Text>
-                <TextInput
-                  value={newSplitEmoji}
-                  onChangeText={setNewSplitEmoji}
-                  placeholder="✈️"
-                  placeholderTextColor="#4b5563"
-                  className="bg-gray-950 border border-gray-800 text-white rounded-xl px-4 py-3 text-sm font-semibold"
-                />
-              </View>
-
-              {/* Members Inputs List */}
-              <View>
-                <View className="flex-row items-center justify-between mb-2">
-                  <Text className="text-gray-500 text-[10px] font-bold uppercase tracking-wider">
-                    Group Members
-                  </Text>
-                  <TouchableOpacity onPress={handleAddMemberRow} className="flex-row items-center gap-1">
-                    <Feather name="plus-circle" size={12} color="#8b6fff" />
-                    <Text className="text-[#8b6fff] text-xs font-bold">Add Member</Text>
+              <Text style={styles.inputLabel}>ICON</Text>
+              <View style={styles.iconGrid}>
+                {ICONS.map((icon) => (
+                  <TouchableOpacity
+                    key={icon}
+                    onPress={() => setSplitEmoji(icon)}
+                    style={[styles.iconBtn, splitEmoji === icon && styles.iconBtnSelected]}
+                  >
+                    <Text style={{ fontSize: 18 }}>{icon}</Text>
                   </TouchableOpacity>
-                </View>
+                ))}
+              </View>
 
-                {newSplitMembers.map((member, idx) => (
-                  <View key={idx} className="flex-row gap-2 mb-2">
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12, marginTop: 12 }}>
+                <Text style={styles.inputLabel}>MEMBERS ({splitMembers.length})</Text>
+                <TouchableOpacity onPress={handleAddMemberRow} style={styles.addMemberIconBtn}>
+                  <Feather name="plus" size={14} color="#8b6fff" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={{ gap: 12, marginBottom: 24 }}>
+                {splitMembers.map((member, idx) => (
+                  <Animated.View layout={Layout.springify()} key={idx} style={styles.memberInputRow}>
+                    <View style={styles.memberAvatarBox}>
+                      <Text style={{ fontSize: 18 }}>{member.avatar}</Text>
+                    </View>
                     <TextInput
                       value={member.name}
                       onChangeText={(val) => handleMemberRowChange(idx, "name", val)}
-                      placeholder={idx === 0 ? "You (Name)" : "Name"}
-                      placeholderTextColor="#4b5563"
-                      className="flex-2 bg-gray-950 border border-gray-800 text-white rounded-xl px-3 py-2 text-xs font-semibold"
-                    />
-                    <TextInput
-                      value={member.email}
-                      onChangeText={(val) => handleMemberRowChange(idx, "email", val)}
-                      placeholder="Email (for collaborative split)"
-                      placeholderTextColor="#4b5563"
-                      className="flex-3 bg-gray-950 border border-gray-800 text-white rounded-xl px-3 py-2 text-xs font-semibold"
+                      placeholder={idx === 0 ? "You (Name)" : `Member ${idx + 1} name`}
+                      placeholderTextColor="#5a5a6e"
+                      style={styles.memberTextInput}
                     />
                     {idx > 0 && (
-                      <TouchableOpacity
-                        onPress={() => handleRemoveMemberRow(idx)}
-                        className="w-10 bg-red-500/10 border border-red-500/20 rounded-xl items-center justify-center"
-                      >
-                        <Feather name="trash-2" size={14} color="#ef4444" />
+                      <TouchableOpacity onPress={() => handleRemoveMemberRow(idx)} style={{ padding: 12 }}>
+                        <Feather name="x" size={16} color="#5a5a6e" />
                       </TouchableOpacity>
                     )}
-                  </View>
+                  </Animated.View>
                 ))}
               </View>
             </ScrollView>
 
-            <TouchableOpacity
-              onPress={handleSaveSplit}
-              className="bg-indigo-650 py-4 rounded-xl items-center mb-6"
-            >
-              <Text className="text-white font-bold text-sm font-syne">Create Split Group</Text>
+            <TouchableOpacity onPress={handleSaveSplit} style={styles.primaryBtn}>
+              <Text style={styles.primaryBtnText}>Create Split 💰</Text>
             </TouchableOpacity>
-          </KeyboardAvoidingView>
+          </Animated.View>
         </View>
       </Modal>
 
+
+
+
+
       {/* ────────────────────────────────────────────────────────
-          2. SPLIT DETAILS OVERLAY MODAL
+          4. SPLIT DETAILS OVERLAY MODAL
           ──────────────────────────────────────────────────────── */}
-      <Modal
-        visible={detailOpen && activeSplit !== null}
-        animationType="slide"
-        transparent={false}
-        onRequestClose={() => setDetailOpen(false)}
-      >
+      <Modal visible={detailOpen && activeSplit !== null} animationType="slide" transparent={false} onRequestClose={() => setDetailOpen(false)}>
         {activeSplit && (
-          <View className="flex-1 bg-gray-950 pt-8">
+          <View style={[styles.container, { paddingTop: insets.top }]}>
             {/* Header */}
-            <View className="px-4 py-3 border-b border-gray-900 flex-row items-center justify-between">
-              <TouchableOpacity
-                onPress={() => setDetailOpen(false)}
-                className="w-10 h-10 rounded-full bg-gray-900 items-center justify-center border border-gray-800"
-              >
-                <Feather name="arrow-left" size={18} color="#9ca3af" />
+            <View style={styles.detailsHeader}>
+              <TouchableOpacity onPress={() => setDetailOpen(false)} style={styles.backBtn}>
+                <Feather name="arrow-left" size={24} color="#fff" />
               </TouchableOpacity>
-              <View className="items-center flex-1 mx-4">
-                <Text className="text-white font-bold text-base font-syne" numberOfLines={1}>
-                  {activeSplit.emoji} {activeSplit.name}
-                </Text>
-                <Text className="text-gray-500 text-[10px] uppercase font-bold tracking-widest mt-0.5">
-                  Split Details
-                </Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Text style={{ fontSize: 20 }}>{activeSplit.emoji}</Text>
+                <Text style={styles.detailsHeaderTitle}>{activeSplit.name}</Text>
               </View>
-              <TouchableOpacity
-                onPress={handleDeleteSplit}
-                className="w-10 h-10 rounded-full bg-red-500/10 items-center justify-center border border-red-500/20"
-              >
-                <Feather name="trash-2" size={16} color="#ef4444" />
+              <TouchableOpacity onPress={handleOpenEditModal} style={styles.backBtn}>
+                <Feather name="more-vertical" size={24} color="#fff" />
               </TouchableOpacity>
             </View>
 
-            <ScrollView className="flex-1 px-4 pt-4" showsVerticalScrollIndicator={false}>
-              {/* Total Spend Summary Card */}
-              <View className="bg-gray-900 border border-gray-800 rounded-2xl p-5 mb-4">
-                <Text className="text-gray-500 text-[10px] font-bold uppercase tracking-wider">
-                  Group Total Spend
-                </Text>
-                <Text className="text-white text-3xl font-black font-syne mt-1">
-                  {formatINR(getSplitTotal(activeSplit))}
-                </Text>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {/* Member Scroll */}
+              <View style={{ marginVertical: 16 }}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 24, gap: 16 }}>
+                  {activeSplit.members.map((m, i) => (
+                    <View key={m.id} style={{ alignItems: "center", gap: 8 }}>
+                      <View style={styles.memberScrollAvatar}>
+                        <Text style={{ fontSize: 24 }}>{m.avatar || "👤"}</Text>
+                        {i === 0 && (
+                          <View style={styles.crownBadge}>
+                            <Text style={{ fontSize: 10 }}>👑</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={styles.memberScrollName}>{m.name.split(' ')[0]}</Text>
+                    </View>
+                  ))}
+                </ScrollView>
               </View>
 
-              {/* Members Spending */}
-              <View className="mb-6">
-                <Text className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-3">
-                  Members & Contributions
-                </Text>
-                <View className="gap-2.5">
-                  {activeSplit.members.map((m) => {
-                    const spending = getMemberSpending(activeSplit)[m.id] || 0;
+              {/* Summary Cards */}
+              <View style={{ flexDirection: "row", paddingHorizontal: 24, gap: 16, marginBottom: 24 }}>
+                <View style={[styles.summaryCard, { flex: 1 }]}>
+                  <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
+                  <Text style={styles.summaryLabel}>TOTAL SPENT</Text>
+                  <Text style={styles.summaryValue}>{formatINR(getSplitTotal(activeSplit))}</Text>
+                </View>
+                <View style={[styles.summaryCard, { flex: 1 }]}>
+                  <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
+                  <Text style={styles.summaryLabel}>PER PERSON</Text>
+                  <Text style={styles.summaryValuePurple}>
+                    {formatINR(activeSplit.members.length > 0 ? getSplitTotal(activeSplit) / activeSplit.members.length : 0)}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Tabs */}
+              <View style={styles.tabsContainer}>
+                <TouchableOpacity onPress={() => setActiveTab("Expenses")} style={[styles.tabBtn, activeTab === "Expenses" && styles.tabBtnActive]}>
+                  <Text style={[styles.tabBtnText, activeTab === "Expenses" && styles.tabBtnTextActive]}>Expenses ({activeSplit.expenses.length})</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setActiveTab("Balances")} style={[styles.tabBtn, activeTab === "Balances" && styles.tabBtnActive]}>
+                  <Text style={[styles.tabBtnText, activeTab === "Balances" && styles.tabBtnTextActive]}>Balances ({calculateBalances(activeSplit).length})</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Search Bar */}
+              <View style={{ paddingHorizontal: 24, marginBottom: 24 }}>
+                <View style={styles.searchBar}>
+                  <Feather name="search" size={18} color="#5a5a6e" />
+                  <TextInput placeholder="Search expenses by name or amount..." placeholderTextColor="#5a5a6e" style={styles.searchInput} />
+                </View>
+              </View>
+
+              {/* Tab Content */}
+              {activeTab === "Expenses" ? (
+                <View style={{ paddingHorizontal: 24, paddingBottom: 100 }}>
+                  {activeSplit.expenses.map((exp) => {
+                    const payer = activeSplit.members.find((m) => m.id === exp.paidBy);
+                    const isExpanded = expandedExpenseId === exp.id;
+                    const amountPerPerson = exp.amount / exp.splitAmong.length;
+
                     return (
-                      <View
-                        key={m.id}
-                        className="bg-gray-900/60 border border-gray-850 rounded-xl p-3 flex-row items-center justify-between"
-                      >
-                        <View className="flex-row items-center gap-2">
-                          <View className="w-8 h-8 rounded-full bg-indigo-500/15 items-center justify-center">
-                            <Text className="text-sm">{m.avatar || "👤"}</Text>
+                      <Animated.View layout={Layout.springify()} key={exp.id} style={styles.expenseItem}>
+                        <TouchableOpacity 
+                          activeOpacity={0.8} 
+                          onPress={() => setExpandedExpenseId(isExpanded ? null : exp.id)}
+                          style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}
+                        >
+                          <View>
+                            <Text style={styles.expenseTitle}>{exp.description}</Text>
+                            <Text style={styles.expenseSub}>Paid by {payer?.name || "Unknown"} · Today</Text>
                           </View>
-                          <Text className="text-white font-semibold text-sm">{m.name}</Text>
-                        </View>
-                        <Text className="text-white font-bold text-sm">
-                          Paid: {formatINR(spending)}
-                        </Text>
-                      </View>
+                          <Text style={styles.expenseAmount}>{formatINR(exp.amount)}</Text>
+                        </TouchableOpacity>
+
+                        {isExpanded && (
+                          <Animated.View entering={FadeInUp} exiting={FadeOutUp} style={styles.expenseExpandedBlock}>
+                            <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 12 }}>
+                              <Text style={styles.expenseExpandedLabel}>SPLIT EQUALLY · {exp.splitAmong.length} PEOPLE</Text>
+                              <Text style={styles.expenseExpandedAmount}>{formatINR(amountPerPerson)} each</Text>
+                            </View>
+                            {exp.splitAmong.map(memberId => {
+                              const m = activeSplit.members.find(memb => memb.id === memberId);
+                              const isSelf = memberId === exp.paidBy;
+                              return (
+                                <View key={memberId} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                                    <Text style={{ fontSize: 16 }}>{m?.avatar || "👤"}</Text>
+                                    <Text style={{ color: "#d1d5db", fontSize: 14 }}>{m?.name}</Text>
+                                  </View>
+                                  <Text style={{ color: isSelf ? "#10b981" : "#ff4f6b", fontSize: 12, fontWeight: "600" }}>
+                                    {isSelf ? "self · " : "owes "}{formatINR(amountPerPerson)}
+                                  </Text>
+                                </View>
+                              );
+                            })}
+
+                            <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 12, marginTop: 12 }}>
+                              <TouchableOpacity style={styles.expenseActionBtn}>
+                                <Feather name="edit-2" size={14} color="#8b6fff" />
+                              </TouchableOpacity>
+                              <TouchableOpacity onPress={() => deleteSplitExpense(activeSplit.id, exp.id)} style={styles.expenseActionBtnRed}>
+                                <Feather name="trash-2" size={14} color="#ef4444" />
+                              </TouchableOpacity>
+                            </View>
+                          </Animated.View>
+                        )}
+                      </Animated.View>
                     );
                   })}
                 </View>
-              </View>
-
-              {/* Settle Debt Calculations */}
-              <View className="mb-6">
-                <Text className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-3">
-                  Pending Settlements
-                </Text>
-                {calculateBalances(activeSplit).length === 0 ? (
-                  <View className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 items-center">
-                    <Text className="text-emerald-500 font-bold text-xs">🎉 All Debts Settled!</Text>
-                  </View>
-                ) : (
-                  <View className="gap-2">
-                    {calculateBalances(activeSplit).map((b, idx) => (
-                      <View
-                        key={idx}
-                        className="bg-gray-900 border border-gray-850 rounded-xl p-3 flex-row items-center justify-between"
-                      >
-                        <View className="flex-1 min-w-0 pr-3">
-                          <Text className="text-gray-300 text-xs font-semibold leading-relaxed">
-                            <Text className="text-white font-bold">{b.from.name}</Text> owes{" "}
-                            <Text className="text-white font-bold">{b.to.name}</Text>
-                          </Text>
-                          <Text className="text-indigo-400 font-bold text-sm mt-0.5">
-                            {formatINR(b.amount)}
-                          </Text>
-                        </View>
-                        <TouchableOpacity
-                          onPress={() => handleOpenSettle(b.from.id, b.to.id, b.amount)}
-                          className="bg-indigo-650 px-3.5 py-1.5 rounded-lg border border-indigo-500/20"
-                        >
-                          <Text className="text-white text-[11px] font-bold">Settle</Text>
-                        </TouchableOpacity>
+              ) : (
+                <View style={{ paddingHorizontal: 24, paddingBottom: 100 }}>
+                  <TouchableOpacity onPress={() => setSettleOpen(true)} style={[styles.primaryBtn, { marginBottom: 24 }]}>
+                    <Text style={styles.primaryBtnText}>Settle Debt Quickly</Text>
+                  </TouchableOpacity>
+                  {calculateBalances(activeSplit).map((b, idx) => (
+                    <View key={idx} style={styles.expenseItem}>
+                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                        <Text style={{ color: "#fff", fontSize: 14 }}>
+                          <Text style={{ fontWeight: "700" }}>{b.from.name}</Text> owes <Text style={{ fontWeight: "700" }}>{b.to.name}</Text>
+                        </Text>
+                        <Text style={{ color: "#8b6fff", fontSize: 16, fontWeight: "700" }}>{formatINR(b.amount)}</Text>
                       </View>
-                    ))}
-                  </View>
-                )}
-              </View>
-
-              {/* Add Member Inline */}
-              <View className="bg-gray-900 border border-gray-850 rounded-2xl p-4 mb-6">
-                <Text className="text-white font-bold text-sm mb-3">Add Group Member</Text>
-                <View className="gap-2.5">
-                  <TextInput
-                    value={newMemberName}
-                    onChangeText={setNewMemberName}
-                    placeholder="Member Name"
-                    placeholderTextColor="#4b5563"
-                    className="bg-gray-950 border border-gray-800 text-white rounded-xl px-3 py-2.5 text-xs font-semibold"
-                  />
-                  <TextInput
-                    value={newMemberEmail}
-                    onChangeText={setNewMemberEmail}
-                    placeholder="Email (Optional)"
-                    placeholderTextColor="#4b5563"
-                    className="bg-gray-950 border border-gray-800 text-white rounded-xl px-3 py-2.5 text-xs font-semibold"
-                  />
-                  <TouchableOpacity
-                    onPress={handleAddMemberToActive}
-                    className="bg-[#6c47ff]/10 border border-[#6c47ff]/20 rounded-xl py-2.5 items-center flex-row justify-center gap-1.5"
-                  >
-                    <Feather name="plus-circle" size={14} color="#8b6fff" />
-                    <Text className="text-[#8b6fff] font-bold text-xs">Add Member</Text>
-                  </TouchableOpacity>
+                    </View>
+                  ))}
                 </View>
-              </View>
-
-              {/* Expenses List */}
-              <View className="mb-10">
-                <View className="flex-row items-center justify-between mb-3">
-                  <Text className="text-gray-400 text-xs font-bold uppercase tracking-wider">
-                    Split Expenses List
-                  </Text>
-                  <TouchableOpacity
-                    onPress={handleOpenAddExpense}
-                    className="flex-row items-center gap-1"
-                  >
-                    <Feather name="plus" size={13} color="#8b6fff" />
-                    <Text className="text-[#8b6fff] text-xs font-bold">Add Expense</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {activeSplit.expenses.length === 0 ? (
-                  <Text className="text-gray-500 text-center py-4">No expenses recorded yet.</Text>
-                ) : (
-                  <View className="gap-2.5">
-                    {activeSplit.expenses.map((e) => {
-                      const payer = activeSplit.members.find((m) => m.id === e.paidBy);
-                      return (
-                        <View
-                          key={e.id}
-                          className="bg-gray-900 border border-gray-850 rounded-xl p-4 flex-row items-center justify-between"
-                        >
-                          <View className="flex-1 pr-3">
-                            <Text className="text-white font-bold text-sm">{e.description}</Text>
-                            <Text className="text-gray-400 text-[10px] mt-1 font-semibold">
-                              Paid by {payer?.name || "Unknown"}
-                            </Text>
-                          </View>
-                          <View className="items-end gap-2">
-                            <Text className="text-white font-bold text-sm">{formatINR(e.amount)}</Text>
-                            <TouchableOpacity
-                              onPress={() => deleteSplitExpense(activeSplit.id, e.id)}
-                              className="p-1"
-                            >
-                              <Feather name="trash-2" size={14} color="#ef4444" />
-                            </TouchableOpacity>
-                          </View>
-                        </View>
-                      );
-                    })}
-                  </View>
-                )}
-              </View>
+              )}
             </ScrollView>
 
-            {/* Quick Actions Footer Panel */}
-            <View className="px-4 py-3 bg-gray-900 border-t border-gray-850 flex-row gap-2">
-              <TouchableOpacity
-                onPress={handleOpenAddExpense}
-                className="flex-1 bg-[#6c47ff] py-3.5 rounded-xl items-center flex-row justify-center gap-2"
-              >
-                <Feather name="plus-circle" size={16} color="white" />
-                <Text className="text-white font-bold text-xs font-syne">Add Expense</Text>
+            {/* Split details FABs */}
+            <View style={styles.bottomNavContainer}>
+              <TouchableOpacity style={styles.navBtn}>
+                <Feather name="home" size={20} color="#5a5a6e" />
+                <Text style={styles.navBtnText}>Home</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => handleOpenSettle()}
-                className="flex-1 bg-emerald-650 py-3.5 rounded-xl items-center flex-row justify-center gap-2 border border-emerald-500/20"
-              >
-                <Feather name="check-circle" size={16} color="white" />
-                <Text className="text-white font-bold text-xs font-syne">Settle Debt</Text>
+              <TouchableOpacity style={styles.navBtn}>
+                <Feather name="dollar-sign" size={20} color="#5a5a6e" />
+                <Text style={styles.navBtnText}>Expenses</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.navBtn}>
+                <Feather name="briefcase" size={20} color="#5a5a6e" />
+                <Text style={styles.navBtnText}>Accounts</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.navBtnActive}>
+                <Feather name="git-pull-request" size={20} color="#8b6fff" style={{ transform: [{ rotate: "180deg" }] }} />
+                <Text style={styles.navBtnTextActive}>Splits</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setAddMemberOpen(true)} style={styles.navBtn}>
+                <Feather name="user-plus" size={20} color="#5a5a6e" />
+                <Text style={styles.navBtnText}>Add</Text>
               </TouchableOpacity>
             </View>
+
+            {activeTab === "Expenses" && (
+              <TouchableOpacity activeOpacity={0.9} onPress={handleOpenAddExpense} style={[styles.fabContainer, { bottom: 90 }]}>
+                <View style={styles.fabGlow} />
+                <LinearGradient colors={["#8b6fff", "#6c47ff"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.fab}>
+                  <Feather name="plus" size={28} color="#fff" />
+                </LinearGradient>
+              </TouchableOpacity>
+            )}
+
+            {/* NESTED MODALS FOR DETAILS VIEW TO WORK ON IOS */}
+            <Modal visible={editOpen} animationType="fade" transparent={true} onRequestClose={() => setEditOpen(false)}>
+              <View style={styles.modalOverlay}>
+                <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setEditOpen(false)} />
+                <Animated.View entering={FadeInUp.duration(300).springify()} style={styles.modalCard}>
+                  <BlurView intensity={50} tint="dark" style={StyleSheet.absoluteFill} />
+                  
+                  <View style={styles.modalHeaderRow}>
+                    <Text style={styles.modalTitle}>Edit Split</Text>
+                    <TouchableOpacity onPress={() => setEditOpen(false)} style={styles.closeBtn}>
+                      <Feather name="x" size={16} color="#9898aa" />
+                    </TouchableOpacity>
+                  </View>
+
+                  <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                    <Text style={styles.inputLabel}>SPLIT NAME</Text>
+                    <TextInput
+                      value={splitName}
+                      onChangeText={setSplitName}
+                      placeholder="Split Name"
+                      placeholderTextColor="#5a5a6e"
+                      style={styles.input}
+                    />
+
+                    <Text style={styles.inputLabel}>ICON</Text>
+                    <View style={styles.iconGrid}>
+                      {ICONS.map((icon) => (
+                        <TouchableOpacity
+                          key={icon}
+                          onPress={() => setSplitEmoji(icon)}
+                          style={[styles.iconBtn, splitEmoji === icon && styles.iconBtnSelected]}
+                        >
+                          <Text style={{ fontSize: 18 }}>{icon}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </ScrollView>
+
+                  <View style={{ flexDirection: "row", gap: 12, marginTop: 16 }}>
+                    <TouchableOpacity onPress={() => setEditOpen(false)} style={[styles.secondaryBtn, { flex: 1 }]}>
+                      <Text style={styles.secondaryBtnText}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={handleUpdateSplit} style={[styles.primaryBtn, { flex: 1, marginTop: 0 }]}>
+                      <Text style={styles.primaryBtnText}>Save</Text>
+                    </TouchableOpacity>
+                  </View>
+                </Animated.View>
+              </View>
+            </Modal>
+
+            <Modal visible={addMemberOpen} animationType="fade" transparent={true} onRequestClose={() => setAddMemberOpen(false)}>
+              <View style={styles.modalOverlay}>
+                <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setAddMemberOpen(false)} />
+                <Animated.View entering={FadeInUp.duration(300).springify()} style={[styles.modalCard, { maxHeight: 400 }]}>
+                  <BlurView intensity={50} tint="dark" style={StyleSheet.absoluteFill} />
+                  
+                  <View style={styles.modalHeaderRow}>
+                    <Text style={styles.modalTitle}>Add Member</Text>
+                    <TouchableOpacity onPress={() => setAddMemberOpen(false)} style={styles.closeBtn}>
+                      <Feather name="x" size={16} color="#9898aa" />
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={{ gap: 12, marginBottom: 24 }}>
+                    <View style={styles.memberInputRow}>
+                      <View style={styles.memberAvatarBox}>
+                        <Text style={{ fontSize: 18 }}>😊</Text>
+                      </View>
+                      <TextInput
+                        value={newMemberName}
+                        onChangeText={setNewMemberName}
+                        placeholder="Member name"
+                        placeholderTextColor="#5a5a6e"
+                        style={styles.memberTextInput}
+                      />
+                    </View>
+                    <TextInput
+                      value={newMemberEmail}
+                      onChangeText={setNewMemberEmail}
+                      placeholder="Email (optional)"
+                      placeholderTextColor="#5a5a6e"
+                      style={styles.input}
+                    />
+                  </View>
+
+                  <TouchableOpacity onPress={handleAddMemberToActive} style={styles.primaryBtn}>
+                    <Text style={styles.primaryBtnText}>Add Member</Text>
+                  </TouchableOpacity>
+                </Animated.View>
+              </View>
+            </Modal>
+
+            <Modal visible={addExpenseOpen} animationType="fade" transparent={true} onRequestClose={() => setAddExpenseOpen(false)}>
+              <View style={styles.modalOverlay}>
+                <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setAddExpenseOpen(false)} />
+                <Animated.View entering={FadeInUp.duration(300).springify()} style={[styles.modalCard, { maxHeight: '80%' }]}>
+                  <BlurView intensity={50} tint="dark" style={StyleSheet.absoluteFill} />
+                  <View style={styles.modalHeaderRow}>
+                    <Text style={styles.modalTitle}>Add Expense</Text>
+                    <TouchableOpacity onPress={() => setAddExpenseOpen(false)} style={styles.closeBtn}>
+                      <Feather name="x" size={16} color="#9898aa" />
+                    </TouchableOpacity>
+                  </View>
+                  <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                    <TextInput value={expenseDesc} onChangeText={setExpenseDesc} placeholder="Description" placeholderTextColor="#5a5a6e" style={styles.input} />
+                    <TextInput keyboardType="numeric" value={expenseAmount} onChangeText={setExpenseAmount} placeholder="Amount" placeholderTextColor="#5a5a6e" style={styles.input} />
+                    <TouchableOpacity onPress={handleSaveSplitExpense} style={styles.primaryBtn}>
+                      <Text style={styles.primaryBtnText}>Save</Text>
+                    </TouchableOpacity>
+                  </ScrollView>
+                </Animated.View>
+              </View>
+            </Modal>
+
+            <Modal visible={settleOpen} animationType="fade" transparent={true} onRequestClose={() => setSettleOpen(false)}>
+              <View style={styles.modalOverlay}>
+                <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setSettleOpen(false)} />
+                <Animated.View entering={FadeInUp.duration(300).springify()} style={[styles.modalCard, { maxHeight: '80%' }]}>
+                  <BlurView intensity={50} tint="dark" style={StyleSheet.absoluteFill} />
+                  <View style={styles.modalHeaderRow}>
+                    <Text style={styles.modalTitle}>Settle Debt</Text>
+                    <TouchableOpacity onPress={() => setSettleOpen(false)} style={styles.closeBtn}>
+                      <Feather name="x" size={16} color="#9898aa" />
+                    </TouchableOpacity>
+                  </View>
+                  <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                    <TextInput keyboardType="numeric" value={settleAmount} onChangeText={setSettleAmount} placeholder="Amount to settle" placeholderTextColor="#5a5a6e" style={styles.input} />
+                    <TouchableOpacity onPress={handleSaveSettle} style={styles.primaryBtn}>
+                      <Text style={styles.primaryBtnText}>Log Settlement</Text>
+                    </TouchableOpacity>
+                  </ScrollView>
+                </Animated.View>
+              </View>
+            </Modal>
           </View>
         )}
       </Modal>
 
-      {/* ────────────────────────────────────────────────────────
-          3. ADD SPLIT EXPENSE SUB-MODAL
-          ──────────────────────────────────────────────────────── */}
-      <Modal
-        visible={addExpenseOpen}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setAddExpenseOpen(false)}
-      >
-        <View className="flex-1 bg-black/60 justify-end">
-          <TouchableOpacity
-            className="absolute inset-0"
-            activeOpacity={1}
-            onPress={() => setAddExpenseOpen(false)}
-          />
-          {activeSplit && (
-            <KeyboardAvoidingView
-              behavior={Platform.OS === "ios" ? "padding" : undefined}
-              className="bg-gray-900 rounded-t-3xl border-t border-gray-800 p-5 max-h-[85%]"
-            >
-              <View className="flex-row items-center justify-between mb-4">
-                <Text className="text-white text-base font-bold font-syne">Add Split Expense</Text>
-                <TouchableOpacity onPress={() => setAddExpenseOpen(false)}>
-                  <Feather name="x" size={18} color="#9ca3af" />
-                </TouchableOpacity>
-              </View>
 
-              <ScrollView className="space-y-4 mb-4" showsVerticalScrollIndicator={false}>
-                {/* Description */}
-                <View>
-                  <Text className="text-gray-500 text-[10px] font-bold uppercase tracking-wider mb-2">
-                    Expense Description
-                  </Text>
-                  <TextInput
-                    value={expenseDesc}
-                    onChangeText={setExpenseDesc}
-                    placeholder="e.g. Goa Cab, Dinner bill"
-                    placeholderTextColor="#4b5563"
-                    className="bg-gray-950 border border-gray-800 text-white rounded-xl px-4 py-3 text-xs font-semibold"
-                  />
-                </View>
 
-                {/* Amount */}
-                <View>
-                  <Text className="text-gray-500 text-[10px] font-bold uppercase tracking-wider mb-2">
-                    Amount (₹)
-                  </Text>
-                  <TextInput
-                    keyboardType="numeric"
-                    value={expenseAmount}
-                    onChangeText={(t) => setExpenseAmount(t.replace(/[^0-9.]/g, ""))}
-                    placeholder="0.00"
-                    placeholderTextColor="#4b5563"
-                    className="bg-gray-950 border border-gray-800 text-white rounded-xl px-4 py-3 text-xs font-semibold"
-                  />
-                </View>
-
-                {/* Paid By */}
-                <View>
-                  <Text className="text-gray-500 text-[10px] font-bold uppercase tracking-wider mb-2">
-                    Paid By
-                  </Text>
-                  <View className="flex-row flex-wrap gap-2">
-                    {activeSplit.members.map((m) => (
-                      <TouchableOpacity
-                        key={m.id}
-                        onPress={() => setExpensePaidBy(m.id)}
-                        className={`px-3 py-2 rounded-xl border ${
-                          expensePaidBy === m.id
-                            ? "border-[#8b6fff] bg-[#6c47ff]/20"
-                            : "border-gray-800 bg-gray-950"
-                        }`}
-                      >
-                        <Text
-                          className={`text-xs font-bold ${
-                            expensePaidBy === m.id ? "text-[#8b6fff]" : "text-gray-400"
-                          }`}
-                        >
-                          {m.avatar || "👤"} {m.name}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-
-                {/* Split Among checkboxes */}
-                <View>
-                  <Text className="text-gray-500 text-[10px] font-bold uppercase tracking-wider mb-2">
-                    Split Among
-                  </Text>
-                  <View className="gap-2">
-                    {activeSplit.members.map((m) => {
-                      const selected = expenseSplitAmong.includes(m.id);
-                      return (
-                        <TouchableOpacity
-                          key={m.id}
-                          onPress={() => handleToggleSplitAmong(m.id)}
-                          className={`flex-row items-center justify-between px-3 py-2.5 rounded-xl border ${
-                            selected
-                              ? "border-[#8b6fff]/40 bg-[#6c47ff]/10"
-                              : "border-gray-850 bg-gray-950"
-                          }`}
-                        >
-                          <Text className="text-gray-300 text-xs font-bold">{m.name}</Text>
-                          <Feather
-                            name={selected ? "check-square" : "square"}
-                            size={16}
-                            color={selected ? "#8b6fff" : "#4b5563"}
-                          />
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </View>
-              </ScrollView>
-
-              <TouchableOpacity
-                onPress={handleSaveSplitExpense}
-                className="bg-[#6c47ff] py-4 rounded-xl items-center mb-6"
-              >
-                <Text className="text-white font-bold text-xs font-syne">Save Expense</Text>
-              </TouchableOpacity>
-            </KeyboardAvoidingView>
-          )}
-        </View>
-      </Modal>
-
-      {/* ────────────────────────────────────────────────────────
-          4. SETTLE DEBT SUB-MODAL
-          ──────────────────────────────────────────────────────── */}
-      <Modal
-        visible={settleOpen}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setSettleOpen(false)}
-      >
-        <View className="flex-1 bg-black/60 justify-end">
-          <TouchableOpacity
-            className="absolute inset-0"
-            activeOpacity={1}
-            onPress={() => setSettleOpen(false)}
-          />
-          {activeSplit && (
-            <KeyboardAvoidingView
-              behavior={Platform.OS === "ios" ? "padding" : undefined}
-              className="bg-gray-900 rounded-t-3xl border-t border-gray-800 p-5 max-h-[80%]"
-            >
-              <View className="flex-row items-center justify-between mb-4">
-                <Text className="text-white text-base font-bold font-syne">Log Debt Settlement</Text>
-                <TouchableOpacity onPress={() => setSettleOpen(false)}>
-                  <Feather name="x" size={18} color="#9ca3af" />
-                </TouchableOpacity>
-              </View>
-
-              <ScrollView className="space-y-4 mb-4" showsVerticalScrollIndicator={false}>
-                {/* Payer (From) */}
-                <View>
-                  <Text className="text-gray-500 text-[10px] font-bold uppercase tracking-wider mb-2">
-                    Who Paid (From)
-                  </Text>
-                  <View className="flex-row flex-wrap gap-2">
-                    {activeSplit.members.map((m) => (
-                      <TouchableOpacity
-                        key={m.id}
-                        onPress={() => setSettleFrom(m.id)}
-                        className={`px-3 py-2 rounded-xl border ${
-                          settleFrom === m.id
-                            ? "border-[#8b6fff] bg-[#6c47ff]/20"
-                            : "border-gray-800 bg-gray-950"
-                        }`}
-                      >
-                        <Text
-                          className={`text-xs font-bold ${
-                            settleFrom === m.id ? "text-[#8b6fff]" : "text-gray-400"
-                          }`}
-                        >
-                          {m.name}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-
-                {/* Payee (To) */}
-                <View>
-                  <Text className="text-gray-500 text-[10px] font-bold uppercase tracking-wider mb-2">
-                    Who Received (To)
-                  </Text>
-                  <View className="flex-row flex-wrap gap-2">
-                    {activeSplit.members.map((m) => (
-                      <TouchableOpacity
-                        key={m.id}
-                        onPress={() => setSettleTo(m.id)}
-                        className={`px-3 py-2 rounded-xl border ${
-                          settleTo === m.id
-                            ? "border-[#8b6fff] bg-[#6c47ff]/20"
-                            : "border-gray-800 bg-gray-950"
-                        }`}
-                      >
-                        <Text
-                          className={`text-xs font-bold ${
-                            settleTo === m.id ? "text-[#8b6fff]" : "text-gray-400"
-                          }`}
-                        >
-                          {m.name}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-
-                {/* Amount */}
-                <View>
-                  <Text className="text-gray-500 text-[10px] font-bold uppercase tracking-wider mb-2">
-                    Settlement Amount (₹)
-                  </Text>
-                  <TextInput
-                    keyboardType="numeric"
-                    value={settleAmount}
-                    onChangeText={(t) => setSettleAmount(t.replace(/[^0-9.]/g, ""))}
-                    placeholder="0.00"
-                    placeholderTextColor="#4b5563"
-                    className="bg-gray-950 border border-gray-800 text-white rounded-xl px-4 py-3 text-xs font-semibold"
-                  />
-                </View>
-              </ScrollView>
-
-              <TouchableOpacity
-                onPress={handleSaveSettle}
-                className="bg-emerald-650 py-4 rounded-xl items-center mb-6"
-              >
-                <Text className="text-white font-bold text-xs font-syne">Log Settlement</Text>
-              </TouchableOpacity>
-            </KeyboardAvoidingView>
-          )}
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
 
-
-// Quick helper to fetch date
 function getTodayISO(): string {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
 
-const splitsStyles = StyleSheet.create({
+const styles = StyleSheet.create({
   loadingContainer: {
     flex: 1,
-    backgroundColor: "#030712",
+    backgroundColor: "#0a0a0f",
     justifyContent: "center",
     alignItems: "center",
   },
   container: {
     flex: 1,
-    backgroundColor: "#030712",
+    backgroundColor: "#0a0a0f",
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 24,
+    marginTop: 24,
+    marginBottom: 32,
+  },
+  headerTitleMask: {
+    fontSize: 28,
+    fontWeight: "900",
+    marginLeft: 12,
+    letterSpacing: 0.5,
+  },
+  emptyStateContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 80,
+  },
+  emptyIconContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: 32,
+    backgroundColor: "rgba(20, 20, 27, 0.8)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.05)",
+  },
+  emptyTitle: {
+    color: "#fff",
+    fontSize: 24,
+    fontWeight: "800",
+    marginBottom: 12,
+  },
+  emptyDesc: {
+    color: "#5a5a6e",
+    fontSize: 14,
+    textAlign: "center",
+    lineHeight: 22,
+    marginBottom: 32,
+    paddingHorizontal: 20,
+  },
+  createFirstBtn: {
+    backgroundColor: "#8b6fff",
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    borderRadius: 20,
+    shadowColor: "#8b6fff",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  createFirstBtnText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  fabContainer: {
+    position: "absolute",
+    bottom: 30,
+    right: 24,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fabGlow: {
+    position: "absolute",
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "rgba(108, 71, 255, 0.3)",
+    transform: [{ scale: 1.2 }],
+  },
+  fab: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#6c47ff",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+  },
+  modalCard: {
+    backgroundColor: "rgba(20, 20, 27, 0.7)",
+    borderRadius: 24,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.1)",
+    maxHeight: "90%",
+    overflow: "hidden",
+  },
+  modalHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 24,
+  },
+  modalTitle: {
+    color: "#fff",
+    fontSize: 20,
+    fontWeight: "800",
+  },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  inputLabel: {
+    color: "#5a5a6e",
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.5,
+    marginBottom: 12,
+  },
+  input: {
+    backgroundColor: "rgba(0, 0, 0, 0.3)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.05)",
+    borderRadius: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    color: "#fff",
+    fontSize: 14,
+    marginBottom: 24,
+  },
+  iconGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    marginBottom: 24,
+  },
+  iconBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: "rgba(0, 0, 0, 0.3)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.05)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  iconBtnSelected: {
+    borderColor: "#8b6fff",
+    backgroundColor: "rgba(108, 71, 255, 0.15)",
+  },
+  addMemberIconBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(108, 71, 255, 0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  memberInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.3)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.05)",
+    borderRadius: 16,
+    padding: 4,
+  },
+  memberAvatarBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  memberTextInput: {
+    flex: 1,
+    color: "#fff",
+    fontSize: 14,
+    paddingHorizontal: 16,
+    height: 44,
+  },
+  primaryBtn: {
+    backgroundColor: "#8b6fff",
+    paddingVertical: 16,
+    borderRadius: 16,
+    alignItems: "center",
+    marginTop: 24,
+  },
+  primaryBtnText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  secondaryBtn: {
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    paddingVertical: 16,
+    borderRadius: 16,
+    alignItems: "center",
+  },
+  secondaryBtnText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  detailsHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 24,
+    marginTop: 16,
+  },
+  backBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  detailsHeaderTitle: {
+    color: "#fff",
+    fontSize: 20,
+    fontWeight: "800",
+  },
+  memberScrollAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "rgba(20, 20, 27, 0.8)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.05)",
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+  crownBadge: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    backgroundColor: "#1a1a24",
+    borderRadius: 10,
+    padding: 2,
+  },
+  memberScrollName: {
+    color: "#9898aa",
+    fontSize: 10,
+    fontWeight: "600",
+  },
+  summaryCard: {
+    backgroundColor: "rgba(20, 20, 27, 0.4)",
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.05)",
+    overflow: "hidden",
+  },
+  summaryLabel: {
+    color: "#5a5a6e",
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1,
+    marginBottom: 8,
+  },
+  summaryValue: {
+    color: "#fff",
+    fontSize: 24,
+    fontWeight: "900",
+  },
+  summaryValuePurple: {
+    color: "#8b6fff",
+    fontSize: 24,
+    fontWeight: "900",
+  },
+  tabsContainer: {
+    flexDirection: "row",
+    paddingHorizontal: 24,
+    gap: 12,
+    marginBottom: 24,
+  },
+  tabBtn: {
+    flex: 1,
+    paddingVertical: 16,
+    borderRadius: 16,
+    backgroundColor: "rgba(20, 20, 27, 0.8)",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.05)",
+  },
+  tabBtnActive: {
+    backgroundColor: "rgba(108, 71, 255, 0.15)",
+    borderColor: "rgba(108, 71, 255, 0.3)",
+  },
+  tabBtnText: {
+    color: "#5a5a6e",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  tabBtnTextActive: {
+    color: "#8b6fff",
+  },
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(20, 20, 27, 0.8)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.05)",
+    borderRadius: 16,
+    paddingHorizontal: 16,
+  },
+  searchInput: {
+    flex: 1,
+    height: 50,
+    color: "#fff",
+    fontSize: 14,
+    paddingHorizontal: 12,
+  },
+  expenseItem: {
+    backgroundColor: "rgba(20, 20, 27, 0.6)",
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 16,
+  },
+  expenseTitle: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
+    marginBottom: 4,
+  },
+  expenseSub: {
+    color: "#5a5a6e",
+    fontSize: 12,
+    fontWeight: "500",
+  },
+  expenseAmount: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  expenseExpandedBlock: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255, 255, 255, 0.05)",
+  },
+  expenseExpandedLabel: {
+    color: "#5a5a6e",
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1,
+  },
+  expenseExpandedAmount: {
+    color: "#8b6fff",
+    fontSize: 10,
+    fontWeight: "800",
+  },
+  expenseActionBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(108, 71, 255, 0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  expenseActionBtnRed: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(239, 68, 68, 0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bottomNavContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 32,
+    backgroundColor: "rgba(10, 10, 15, 0.9)",
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255, 255, 255, 0.05)",
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+  },
+  navBtn: {
+    alignItems: "center",
+    gap: 4,
+  },
+  navBtnActive: {
+    alignItems: "center",
+    gap: 4,
+  },
+  navBtnText: {
+    color: "#5a5a6e",
+    fontSize: 10,
+    fontWeight: "600",
+  },
+  navBtnTextActive: {
+    color: "#8b6fff",
+    fontSize: 10,
+    fontWeight: "700",
   },
 });

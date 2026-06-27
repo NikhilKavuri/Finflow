@@ -260,6 +260,21 @@ export default function ProfileScreen() {
           </View>
           <Feather name="chevron-right" size={16} color="#4b5563" />
         </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => router.push("/(app)/accounts")}
+          className="bg-gray-900 rounded-xl p-4 border border-gray-800 flex-row items-center justify-between"
+        >
+          <View>
+            <Text className="text-gray-500 text-[10px] font-bold uppercase tracking-wider">
+              Bank Accounts
+            </Text>
+            <Text className="text-white font-bold text-sm mt-1">
+              {state.banks.length} Accounts configured
+            </Text>
+          </View>
+          <Feather name="chevron-right" size={16} color="#4b5563" />
+        </TouchableOpacity>
       </View>
 
       {/* Support Settings */}
