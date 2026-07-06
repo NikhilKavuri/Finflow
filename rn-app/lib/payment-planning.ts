@@ -73,7 +73,8 @@ function getPaymentDueDate(cycleEnd: Date, paymentDueDay: number): Date {
 function isCreditCardTransaction(tx: Transaction, paymentMethods: PaymentMethodConfig[]): boolean {
   if (tx.paymentMethod === "credit_card") return true;
   if (!tx.paymentMethodId) return false;
-  return paymentMethods.find((pm) => pm.id === tx.paymentMethodId)?.type === "credit_card";
+  const pm = paymentMethods.find((p) => p.id === tx.paymentMethodId);
+  return pm ? pm.type === "credit_card" : false;
 }
 
 function belongsToMethod(
