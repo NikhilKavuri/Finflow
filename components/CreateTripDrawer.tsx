@@ -23,7 +23,6 @@ export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
   const [emoji, setEmoji] = useState("💰");
   const [members, setMembers] = useState<{ name: string; avatar: string; email?: string }[]>([
     { name: user?.displayName || "You", avatar: "😎", email: user?.email || undefined },
-    { name: "", avatar: "🤩", email: "" },
   ]);
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -65,7 +64,7 @@ export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
   };
 
   const removeMember = (index: number) => {
-    if (members.length <= 2 || index === 0) return;
+    if (members.length <= 1 || index === 0) return;
     setMembers(members.filter((_, i) => i !== index));
   };
 
@@ -84,8 +83,8 @@ export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
       index === 0 || m.email?.trim() || m.name.trim()
     );
 
-    if (validMembers.length < 2) {
-      setError("Add at least 2 members");
+    if (validMembers.length < 1) {
+      setError("Add at least 1 member");
       return;
     }
 
@@ -240,7 +239,7 @@ export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
                       }}
                     />
 
-                    {members.length > 2 && index > 0 && (
+                    {members.length > 1 && index > 0 && (
                       <motion.button
                         whileTap={isSubmitting ? undefined : { scale: 0.9 }}
                         onClick={isSubmitting ? undefined : () => removeMember(index)}

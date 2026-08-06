@@ -21,9 +21,11 @@ import {
   CalendarDays,
 } from "lucide-react";
 import { useSplits, calculateBalances, getSplitTotal, getMemberSpending } from "@/hooks/useSplits";
+import { useExpenses } from "@/hooks/useExpenses";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatINR, formatDate } from "@/lib/utils";
 import { getCategoryById } from "@/lib/categories";
+import { classifyExpense } from "@/lib/classifier";
 import BottomNav from "@/components/BottomNav";
 import BalanceChart from "@/components/BalanceChart";
 import TripExpenseDrawer from "@/components/SplitExpenseDrawer";
@@ -54,6 +56,7 @@ export default function TripDetailPage() {
     assignAdmin,
     hydrated,
   } = useSplits();
+  const { addTransaction, editTransaction, deleteTransaction } = useExpenses();
 
   const trip = getSplit(tripId);
   const canEdit = isAdmin(tripId);
@@ -245,15 +248,59 @@ export default function TripDetailPage() {
   };
 
   const handleAddExpense = (expense: Omit<SplitExpense, "id">) => {
+    const catId = expense.category || classifyExpense(expense.description)?.id || "other";
+
     if (editingExpense) {
-      updateSplitExpense(tripId, editingExpense.id, expense);
+      if (editingExpense.transactionId) {
+        editTransaction(editingExpense.transactionId, {
+          name: expense.description,
+          amount: expense.amount,
+          category: catId,
+          date: expense.date,
+        });
+        updateSplitExpense(tripId, editingExpense.id, { ...expense, category: catId });
+      } else {
+        const tx = addTransaction({
+          name: expense.description,
+          amount: expense.amount,
+          category: catId,
+          type: "expense",
+          date: expense.date,
+          bankId: "default",
+        });
+        updateSplitExpense(tripId, editingExpense.id, {
+          ...expense,
+          category: catId,
+          transactionId: tx.id,
+        });
+      }
       showToast("Expense updated");
     } else {
-      addSplitExpense(tripId, expense);
+      const tx = addTransaction({
+        name: expense.description,
+        amount: expense.amount,
+        category: catId,
+        type: "expense",
+        date: expense.date,
+        bankId: "default",
+      });
+      addSplitExpense(tripId, {
+        ...expense,
+        category: catId,
+        transactionId: tx.id,
+      });
       showToast("Expense added");
     }
     setExpenseDrawerOpen(false);
     setEditingExpense(null);
+  };
+
+  const handleDeleteExpense = (expense: SplitExpense) => {
+    deleteSplitExpense(tripId, expense.id);
+    if (expense.transactionId) {
+      deleteTransaction(expense.transactionId);
+    }
+    showToast("Expense removed");
   };
 
   const handleDeleteSplit = async () => {
@@ -621,8 +668,7 @@ export default function TripDetailPage() {
                               <motion.button
                                 whileTap={{ scale: 0.85 }}
                                 onClick={() => {
-                                  deleteSplitExpense(tripId, expense.id);
-                                  showToast("Expense removed");
+                                  handleDeleteExpense(expense);
                                 }}
                                 className="w-7 h-7 rounded-full bg-red-500/10 flex items-center justify-center text-red-400"
                               >

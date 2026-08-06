@@ -81,6 +81,7 @@ export interface SplitExpense {
   splitAmong: string[]; // member ids (equal split)
   date: string;         // ISO date
   category?: string;
+  transactionId?: string; // linked normal expense transaction id
 }
 
 export interface SplitContribution {
