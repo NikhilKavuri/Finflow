@@ -3,7 +3,7 @@
 import { useMemo, useState, useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { Search, Trash2, Pencil, Receipt, Sparkles, Layers, ChevronDown } from "lucide-react";
+import { Search, Trash2, Pencil, Receipt, Sparkles, Layers, ChevronDown, RotateCcw } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useExpenses } from "@/hooks/useExpenses";
 import { getCategoryById, CATEGORIES } from "@/lib/categories";
@@ -28,6 +28,7 @@ export default function ExpensesPage() {
     editTransaction,
     deleteTransaction,
     clearAll,
+    resetAll,
   } = useExpenses();
 
   type AddFlow = "chooser" | "individual" | "group" | null;
@@ -37,6 +38,8 @@ export default function ExpensesPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [selectedCatFilter, setSelectedCatFilter] = useState<string | null>(null);
+  const [resetModalOpen, setResetModalOpen] = useState(false);
+  const [resetConfirmText, setResetConfirmText] = useState("");
 
   // Auth gate: redirect to login if not authenticated
   useEffect(() => {
@@ -129,6 +132,18 @@ export default function ExpensesPage() {
             {state.transactions.length} total
           </span>
         </div>
+
+        {/* Reset All Data Button */}
+        {state.transactions.length > 0 && (
+          <motion.button
+            whileTap={{ scale: 0.97 }}
+            onClick={() => { setResetConfirmText(""); setResetModalOpen(true); }}
+            className="w-full flex items-center justify-center gap-2 mb-3 py-2.5 rounded-xl border border-red-500/15 bg-red-500/5 hover:bg-red-500/10 text-xs font-bold text-red-400 transition-all"
+          >
+            <RotateCcw size={13} />
+            Reset All Data
+          </motion.button>
+        )}
 
         {/* Search */}
         {state.transactions.length > 0 && (
@@ -243,10 +258,8 @@ export default function ExpensesPage() {
                 </span>
                 <button
                   onClick={() => {
-                    if (confirm("Are you sure you want to clear all transactions? This cannot be undone.")) {
-                      clearAll();
-                      showToast("All transactions cleared");
-                    }
+                    setResetConfirmText("");
+                    setResetModalOpen(true);
                   }}
                   className="text-[10px] font-bold text-[#5a5a6e] hover:text-[#ff4f6b] transition-colors"
                 >
@@ -489,6 +502,81 @@ export default function ExpensesPage() {
       </AnimatePresence>
 
       <AnimatePresence>{toast && <Toast message={toast} />}</AnimatePresence>
+
+      {/* Reset All Data Confirmation Modal */}
+      <AnimatePresence>
+        {resetModalOpen && (
+          <motion.div
+            className="fixed inset-0 z-[100] flex items-center justify-center px-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <div
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={() => setResetModalOpen(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ type: "spring", stiffness: 400, damping: 30 }}
+              className="relative z-10 w-full max-w-[380px] rounded-2xl border border-white/[0.08] bg-[#18181f] p-5"
+            >
+              <div className="text-center mb-4">
+                <div className="w-14 h-14 rounded-full bg-red-500/15 flex items-center justify-center mx-auto mb-3">
+                  <RotateCcw size={24} className="text-red-400" />
+                </div>
+                <h3 className="font-syne text-base font-bold text-white mb-1">Reset All Data?</h3>
+                <p className="text-xs text-[#5a5a6e] leading-relaxed">
+                  This will permanently delete <span className="text-white font-semibold">{state.transactions.length} transactions</span>, reset all bank balances, and clear your budget data. This cannot be undone.
+                </p>
+              </div>
+
+              <div className="mb-4">
+                <label className="text-[10px] font-semibold text-[#5a5a6e] uppercase tracking-wider block mb-1.5">
+                  Type <span className="text-red-400 font-bold">RESET</span> to confirm
+                </label>
+                <input
+                  type="text"
+                  value={resetConfirmText}
+                  onChange={(e) => setResetConfirmText(e.target.value)}
+                  placeholder="Type RESET here"
+                  className="w-full bg-[#1e1e28] border border-white/[0.08] rounded-xl px-3 py-2.5 text-sm text-white placeholder-[#5a5a6e]/50 outline-none focus:border-red-500/40 transition-colors text-center font-mono tracking-widest"
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <motion.button
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => setResetModalOpen(false)}
+                  className="flex-1 py-3 rounded-xl text-sm font-bold text-white bg-white/5 border border-white/[0.08]"
+                >
+                  Cancel
+                </motion.button>
+                <motion.button
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => {
+                    resetAll();
+                    setResetModalOpen(false);
+                    setResetConfirmText("");
+                    showToast("All data has been reset 🔄");
+                  }}
+                  disabled={resetConfirmText !== "RESET"}
+                  className={`flex-1 py-3 rounded-xl text-sm font-bold text-white transition-all ${
+                    resetConfirmText === "RESET"
+                      ? "bg-red-500 hover:bg-red-600"
+                      : "bg-red-500/20 text-red-400/50 cursor-not-allowed"
+                  }`}
+                >
+                  Reset Everything
+                </motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

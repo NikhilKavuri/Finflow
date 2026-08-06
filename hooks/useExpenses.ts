@@ -360,6 +360,13 @@ export function useExpenses() {
     });
   }, [updateState]);
 
+  const resetAll = useCallback(() => {
+    updateState(() => ({
+      ...DEFAULT_STATE,
+      onboarded: false,
+    }));
+  }, [updateState]);
+
   const clearCategory = useCallback(
     (categoryId: string, monthPrefix?: string) => {
       updateState((prev) => {
@@ -540,6 +547,7 @@ export function useExpenses() {
     editTransaction,
     deleteTransaction,
     clearAll,
+    resetAll,
     clearCategory,
     updateBudget,
     updateMonthlyBudget,

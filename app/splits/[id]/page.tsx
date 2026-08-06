@@ -15,10 +15,15 @@ import {
   Crown,
   Shield,
   Search,
+  Zap,
+  TrendingUp,
+  BarChart3,
+  CalendarDays,
 } from "lucide-react";
 import { useSplits, calculateBalances, getSplitTotal, getMemberSpending } from "@/hooks/useSplits";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatINR, formatDate } from "@/lib/utils";
+import { getCategoryById } from "@/lib/categories";
 import BottomNav from "@/components/BottomNav";
 import BalanceChart from "@/components/BalanceChart";
 import TripExpenseDrawer from "@/components/SplitExpenseDrawer";
@@ -92,6 +97,76 @@ export default function TripDetailPage() {
       return matchesDescription || matchesAmount;
     });
   }, [trip, expenseSearch]);
+
+  // ── Analytics Computations ────────────────────────────────
+
+  // Category breakdown
+  const categoryBreakdown = useMemo(() => {
+    if (!trip || trip.expenses.length === 0) return [];
+    const catMap: Record<string, number> = {};
+    for (const exp of trip.expenses) {
+      const catId = exp.category || "other";
+      catMap[catId] = (catMap[catId] || 0) + exp.amount;
+    }
+    return Object.entries(catMap)
+      .map(([catId, amount]) => {
+        const cat = getCategoryById(catId);
+        return { id: catId, name: cat.name, emoji: cat.emoji, color: cat.color, amount, pct: total > 0 ? (amount / total) * 100 : 0 };
+      })
+      .sort((a, b) => b.amount - a.amount);
+  }, [trip, total]);
+
+  // Daily spending timeline
+  const dailyTimeline = useMemo(() => {
+    if (!trip || trip.expenses.length === 0) return [];
+    const dayMap: Record<string, { date: string; total: number; count: number }> = {};
+    for (const exp of trip.expenses) {
+      if (!dayMap[exp.date]) dayMap[exp.date] = { date: exp.date, total: 0, count: 0 };
+      dayMap[exp.date].total += exp.amount;
+      dayMap[exp.date].count += 1;
+    }
+    const days = Object.values(dayMap).sort((a, b) => (a.date > b.date ? 1 : -1));
+    const maxDay = Math.max(...days.map((d) => d.total), 1);
+    return days.map((d) => ({ ...d, pct: (d.total / maxDay) * 100 }));
+  }, [trip]);
+
+  // Trip stats spotlight
+  const tripStats = useMemo(() => {
+    if (!trip || trip.expenses.length === 0) return null;
+    const expCount = trip.expenses.length;
+    const avgExpense = total / expCount;
+    const highestExpense = trip.expenses.reduce((max, e) => (e.amount > max.amount ? e : max), trip.expenses[0]);
+    // Top spender (who paid the most)
+    let topSpenderId = "";
+    let topSpenderAmount = 0;
+    for (const [memberId, spent] of Object.entries(memberSpending)) {
+      if (spent > topSpenderAmount) {
+        topSpenderId = memberId;
+        topSpenderAmount = spent;
+      }
+    }
+    const topSpender = trip.members.find((m) => m.id === topSpenderId);
+    const isSolo = trip.members.length === 1;
+    return { expCount, avgExpense, highestExpense, topSpender, topSpenderAmount, isSolo };
+  }, [trip, total, memberSpending]);
+
+  // Per-member detailed stats
+  const memberDetailedStats = useMemo(() => {
+    if (!trip || trip.expenses.length === 0) return [];
+    return trip.members.map((member) => {
+      const paidExpenses = trip.expenses.filter((e) => {
+        if (e.contributors && e.contributors.length > 0) {
+          return e.contributors.some((c) => c.memberId === member.id);
+        }
+        return e.paidBy === member.id;
+      });
+      const totalPaid = memberSpending[member.id] || 0;
+      const expenseCount = paidExpenses.length;
+      const avgExpense = expenseCount > 0 ? totalPaid / expenseCount : 0;
+      const shareOfTotal = total > 0 ? (totalPaid / total) * 100 : 0;
+      return { member, totalPaid, expenseCount, avgExpense, shareOfTotal };
+    }).sort((a, b) => b.totalPaid - a.totalPaid);
+  }, [trip, memberSpending, total]);
 
   if (!hydrated) return <PageLoader message="Loading split..." />;
 
@@ -598,6 +673,237 @@ export default function TripDetailPage() {
                         </div>
                       );
                     })}
+                  </div>
+                </div>
+              )}
+
+              {/* ── Category Breakdown ─────────────────────── */}
+              {trip.expenses.length > 0 && categoryBreakdown.length > 0 && (
+                <div className="mt-4 rounded-2xl border border-white/[0.06] bg-[#15151d] p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <BarChart3 size={13} className="text-[#8b6fff]" />
+                    <h4 className="text-[10px] font-semibold text-[#5a5a6e] uppercase tracking-wider">
+                      Category Breakdown
+                    </h4>
+                  </div>
+                  <div className="space-y-2.5">
+                    {categoryBreakdown.map((cat, i) => (
+                      <motion.div
+                        key={cat.id}
+                        initial={{ opacity: 0, x: -8 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ duration: 0.3, delay: i * 0.05 }}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm">{cat.emoji}</span>
+                            <span className="text-xs font-semibold text-white">{cat.name}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold" style={{ color: cat.color }}>
+                              {cat.pct.toFixed(1)}%
+                            </span>
+                            <span className="text-xs font-bold text-[#9898aa]">
+                              {formatINR(cat.amount)}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="h-2 rounded-full bg-white/[0.06] overflow-hidden">
+                          <motion.div
+                            initial={{ width: 0 }}
+                            animate={{ width: `${cat.pct}%` }}
+                            transition={{ duration: 0.7, ease: "easeOut", delay: i * 0.05 }}
+                            className="h-full rounded-full"
+                            style={{ background: `linear-gradient(90deg, ${cat.color}cc, ${cat.color})` }}
+                          />
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ── Trip Stats Spotlight ───────────────────── */}
+              {tripStats && (
+                <div className="mt-4 rounded-2xl border border-white/[0.06] bg-[#15151d] p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Zap size={13} className="text-[#ffb830]" />
+                    <h4 className="text-[10px] font-semibold text-[#5a5a6e] uppercase tracking-wider">
+                      {tripStats.isSolo ? "Your Stats" : "Trip Highlights"}
+                    </h4>
+                  </div>
+
+                  {/* Top Spender Card (hidden for solo) */}
+                  {!tripStats.isSolo && tripStats.topSpender && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ duration: 0.4 }}
+                      className="mb-3 p-3 rounded-xl border border-[#ffb830]/15 bg-gradient-to-br from-[#ffb830]/5 to-[#ff8c00]/5"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="relative">
+                          <div className="w-10 h-10 rounded-full bg-[#ffb830]/15 border border-[#ffb830]/25 flex items-center justify-center text-lg">
+                            {tripStats.topSpender.avatar}
+                          </div>
+                          <Crown size={12} className="absolute -top-1 -right-1 text-[#ffb830] fill-[#ffb830]" />
+                        </div>
+                        <div className="flex-1">
+                          <div className="text-[10px] font-semibold text-[#ffb830]/70 uppercase tracking-wider">
+                            Top Spender
+                          </div>
+                          <div className="text-sm font-bold text-white">
+                            {tripStats.topSpender.name}
+                          </div>
+                          <div className="text-xs font-bold text-[#ffb830]">
+                            {formatINR(tripStats.topSpenderAmount)}
+                          </div>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.04] text-center">
+                      <div className="text-lg font-bold text-white font-syne">{tripStats.expCount}</div>
+                      <div className="text-[9px] font-semibold text-[#5a5a6e] uppercase tracking-wider mt-0.5">
+                        Expenses
+                      </div>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.04] text-center">
+                      <div className="text-sm font-bold text-[#8b6fff] font-syne">{formatINR(tripStats.avgExpense)}</div>
+                      <div className="text-[9px] font-semibold text-[#5a5a6e] uppercase tracking-wider mt-0.5">
+                        Avg Each
+                      </div>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.04] text-center">
+                      <div className="text-sm font-bold text-[#ff6b35] font-syne">{formatINR(tripStats.highestExpense.amount)}</div>
+                      <div className="text-[9px] font-semibold text-[#5a5a6e] uppercase tracking-wider mt-0.5">
+                        Biggest
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Highest expense detail */}
+                  <div className="mt-2 px-2.5 py-2 rounded-lg bg-white/[0.02] border border-white/[0.04]">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-[#5a5a6e]">
+                        Biggest expense:
+                      </span>
+                      <span className="text-[10px] font-bold text-white truncate ml-2">
+                        {tripStats.highestExpense.description} — {formatINR(tripStats.highestExpense.amount)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Daily Spending Timeline ────────────────── */}
+              {trip.expenses.length > 0 && dailyTimeline.length > 0 && (
+                <div className="mt-4 rounded-2xl border border-white/[0.06] bg-[#15151d] p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <CalendarDays size={13} className="text-[#2ce88a]" />
+                    <h4 className="text-[10px] font-semibold text-[#5a5a6e] uppercase tracking-wider">
+                      Daily Spending
+                    </h4>
+                  </div>
+                  <div className="space-y-2">
+                    {dailyTimeline.map((day, i) => (
+                      <motion.div
+                        key={day.date}
+                        initial={{ opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.3, delay: i * 0.06 }}
+                        className="flex items-center gap-3"
+                      >
+                        <div className="w-16 flex-shrink-0">
+                          <div className="text-[10px] font-bold text-[#9898aa]">
+                            {formatDate(day.date)}
+                          </div>
+                          <div className="text-[9px] text-[#5a5a6e]">
+                            {day.count} {day.count === 1 ? "expense" : "expenses"}
+                          </div>
+                        </div>
+                        <div className="flex-1">
+                          <div className="h-3 rounded-full bg-white/[0.06] overflow-hidden">
+                            <motion.div
+                              initial={{ width: 0 }}
+                              animate={{ width: `${day.pct}%` }}
+                              transition={{ duration: 0.6, ease: "easeOut", delay: i * 0.06 }}
+                              className="h-full rounded-full bg-gradient-to-r from-[#2ce88a]/80 to-[#2ce88a]"
+                            />
+                          </div>
+                        </div>
+                        <div className="w-16 text-right flex-shrink-0">
+                          <span className="text-xs font-bold text-white">
+                            {formatINR(day.total)}
+                          </span>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+                  {dailyTimeline.length > 1 && (
+                    <div className="mt-3 pt-2 border-t border-white/[0.04]">
+                      <div className="flex items-center justify-between text-[10px]">
+                        <span className="text-[#5a5a6e]">Daily average</span>
+                        <span className="font-bold text-[#2ce88a]">
+                          {formatINR(total / dailyTimeline.length)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── Per-Member Detailed Stats ──────────────── */}
+              {trip.expenses.length > 0 && memberDetailedStats.length > 1 && (
+                <div className="mt-4 rounded-2xl border border-white/[0.06] bg-[#15151d] p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <TrendingUp size={13} className="text-[#a855f7]" />
+                    <h4 className="text-[10px] font-semibold text-[#5a5a6e] uppercase tracking-wider">
+                      Member Expense Stats
+                    </h4>
+                  </div>
+                  <div className="space-y-3">
+                    {memberDetailedStats.map((stat, i) => (
+                      <motion.div
+                        key={stat.member.id}
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.3, delay: i * 0.07 }}
+                        className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.04]"
+                      >
+                        <div className="flex items-center gap-2.5 mb-2">
+                          <div className="w-8 h-8 rounded-full bg-[#252533] border border-white/[0.06] flex items-center justify-center text-sm">
+                            {stat.member.avatar}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-bold text-white truncate">{stat.member.name}</div>
+                            <div className="text-[10px] text-[#5a5a6e]">
+                              {stat.expenseCount} {stat.expenseCount === 1 ? "expense" : "expenses"} paid
+                            </div>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <div className="text-xs font-bold text-[#8b6fff]">
+                              {formatINR(stat.totalPaid)}
+                            </div>
+                            <div className="text-[9px] font-semibold text-[#5a5a6e]">
+                              {stat.shareOfTotal.toFixed(1)}% of total
+                            </div>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="px-2 py-1.5 rounded-lg bg-white/[0.03] text-center">
+                            <div className="text-[10px] font-bold text-[#9898aa]">{formatINR(stat.avgExpense)}</div>
+                            <div className="text-[8px] text-[#5a5a6e] uppercase tracking-wider">Avg/Expense</div>
+                          </div>
+                          <div className="px-2 py-1.5 rounded-lg bg-white/[0.03] text-center">
+                            <div className="text-[10px] font-bold text-[#9898aa]">{stat.expenseCount}</div>
+                            <div className="text-[8px] text-[#5a5a6e] uppercase tracking-wider">Times Paid</div>
+                          </div>
+                        </div>
+                      </motion.div>
+                    ))}
                   </div>
                 </div>
               )}
