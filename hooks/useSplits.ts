@@ -17,6 +17,7 @@ import {
   addNotification,
   addSplitInvite,
   findUserByEmail,
+  markInviteLinkUsed,
 } from "@/lib/firestore";
 
 const SPLITS_KEY = "finflow_trips"; // Keep original key for backward compat
@@ -809,6 +810,90 @@ export function useSplits() {
     [allSplits]
   );
 
+  // Accept a split invitation via an invite link token
+  const acceptInviteViaLink = useCallback(
+    async (token: string, splitId: string) => {
+      const uid = uidRef.current;
+      if (!uid) return;
+
+      // Load the split from Firestore
+      const split = sharedSplits.find((s) => s.id === splitId) ?? (await loadSharedSplit(splitId));
+      if (!split) return;
+
+      const currentUserName = user?.displayName || user?.email || "Member";
+      const currentUserEmail = (user?.email || "").trim().toLowerCase();
+
+      // Check if user is already a member
+      const existingMember = split.members.find(
+        (m) => m.uid === uid || (m.email && m.email === currentUserEmail)
+      );
+
+      let updatedSplit: SplitSession;
+
+      if (existingMember) {
+        // User is already a member — just update their status
+        updatedSplit = {
+          ...split,
+          members: split.members.map((m) =>
+            m.id === existingMember.id
+              ? { ...m, uid, name: currentUserName, email: currentUserEmail, status: "accepted" as const }
+              : m
+          ),
+        };
+      } else {
+        // New member — add them
+        const newMember: SplitMember = {
+          id: `m_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+          name: currentUserName,
+          avatar: "😊",
+          email: currentUserEmail,
+          uid,
+          role: "member",
+          status: "accepted",
+        };
+        updatedSplit = {
+          ...split,
+          members: [...split.members, newMember],
+          isCollaborative: true,
+        };
+      }
+
+      // Persist to Firestore
+      await updateSharedSplit(splitId, {
+        members: updatedSplit.members,
+        isCollaborative: updatedSplit.isCollaborative,
+      });
+
+      // Add to user's shared split list
+      const ids = await loadUserSharedSplitIds(uid);
+      if (!ids.includes(splitId)) {
+        await saveUserSharedSplitIds(uid, [...ids, splitId]);
+      }
+
+      // Record token usage
+      await markInviteLinkUsed(token, uid);
+
+      // Update local state
+      setSharedSplits((prev) => {
+        const exists = prev.some((s) => s.id === splitId);
+        return exists
+          ? prev.map((s) => (s.id === splitId ? updatedSplit : s))
+          : [updatedSplit, ...prev];
+      });
+    },
+    [sharedSplits, user?.displayName, user?.email]
+  );
+
+  // Reject a split invitation via link (no-op on state since user was never added)
+  const rejectInviteViaLink = useCallback(
+    async (_token: string, _splitId: string) => {
+      // For link-based invites, declining just means the user doesn't join.
+      // The link stays valid until expiry so they can reconsider.
+      // No state changes needed.
+    },
+    []
+  );
+
   return {
     splits: allSplits,
     localSplits: splits,
@@ -828,6 +913,8 @@ export function useSplits() {
     updateSplit,
     acceptInvite,
     rejectInvite,
+    acceptInviteViaLink,
+    rejectInviteViaLink,
     assignAdmin,
     isAdmin,
   };

@@ -16,7 +16,7 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import { db, isFirebaseConfigured } from "./firebase";
-import type { AppState, SplitSession, SplitNotification, UserProfile } from "./types";
+import type { AppState, SplitSession, SplitNotification, UserProfile, SplitInviteLink } from "./types";
 
 // Legacy alias kept for backwards compatibility
 import type { TripSession } from "./types";
@@ -807,3 +807,126 @@ export async function logUserDataNeatly(uid: string, email: string) {
   }
 }
 
+// ── Split Invite Links ──────────────────────────────────────
+
+/**
+ * Generate a random token for invite links
+ */
+function generateInviteToken(): string {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let token = "";
+  const array = new Uint8Array(24);
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+    crypto.getRandomValues(array);
+    for (let i = 0; i < 24; i++) {
+      token += chars[array[i] % chars.length];
+    }
+  } else {
+    for (let i = 0; i < 24; i++) {
+      token += chars[Math.floor(Math.random() * chars.length)];
+    }
+  }
+  return token;
+}
+
+/**
+ * Create an invite link for a split and store it in Firestore.
+ * Returns the generated token.
+ */
+export async function createSplitInviteLink(
+  splitId: string,
+  creatorUid: string,
+  creatorName: string,
+  splitName: string,
+  splitEmoji: string,
+  expiresInDays: number = 7
+): Promise<string | null> {
+  if (!db || !isFirebaseConfigured()) return null;
+
+  const firestore = db as Firestore;
+  const token = generateInviteToken();
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + expiresInDays * 24 * 60 * 60 * 1000);
+
+  const inviteLink: SplitInviteLink = {
+    token,
+    splitId,
+    creatorUid,
+    creatorName,
+    splitName,
+    splitEmoji,
+    createdAt: now.toISOString(),
+    expiresAt: expiresAt.toISOString(),
+    status: "active",
+  };
+
+  try {
+    const ref = doc(firestore, "splitInviteLinks", token);
+    await setDoc(ref, inviteLink);
+    return token;
+  } catch (error) {
+    console.warn("Firestore createSplitInviteLink failed:", error);
+    return null;
+  }
+}
+
+/**
+ * Load an invite link by token. Returns null if not found or expired.
+ */
+export async function loadSplitInviteLink(
+  token: string
+): Promise<SplitInviteLink | null> {
+  if (!db || !isFirebaseConfigured()) return null;
+
+  const firestore = db as Firestore;
+
+  try {
+    const ref = doc(firestore, "splitInviteLinks", token);
+    const snapshot = await getDoc(ref);
+    if (!snapshot.exists()) return null;
+
+    const data = snapshot.data() as SplitInviteLink;
+
+    // Check expiry
+    if (new Date(data.expiresAt) < new Date()) {
+      // Mark as expired if it wasn't already
+      if (data.status !== "expired") {
+        await setDoc(ref, { status: "expired" }, { merge: true });
+      }
+      return { ...data, status: "expired" };
+    }
+
+    return data;
+  } catch (error) {
+    console.warn("Firestore loadSplitInviteLink failed:", error);
+    return null;
+  }
+}
+
+/**
+ * Record that a user used an invite link (for audit).
+ * The link stays active for others within the expiry window.
+ */
+export async function markInviteLinkUsed(
+  token: string,
+  uid: string
+): Promise<void> {
+  if (!db || !isFirebaseConfigured()) return;
+
+  const firestore = db as Firestore;
+
+  try {
+    const ref = doc(firestore, "splitInviteLinks", token);
+    const snapshot = await getDoc(ref);
+    if (!snapshot.exists()) return;
+
+    const data = snapshot.data();
+    const usedBy: string[] = Array.isArray(data.usedBy) ? data.usedBy : [];
+    if (!usedBy.includes(uid)) {
+      usedBy.push(uid);
+    }
+    await setDoc(ref, { usedBy }, { merge: true });
+  } catch (error) {
+    console.warn("Firestore markInviteLinkUsed failed:", error);
+  }
+}

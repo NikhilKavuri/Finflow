@@ -19,6 +19,7 @@ import {
   TrendingUp,
   BarChart3,
   CalendarDays,
+  Share2,
 } from "lucide-react";
 import { useSplits, calculateBalances, getSplitTotal, getMemberSpending } from "@/hooks/useSplits";
 import { useExpenses } from "@/hooks/useExpenses";
@@ -33,6 +34,7 @@ import EditMemberModal from "@/components/EditMemberModal";
 import EditTitleModal from "@/components/EditTitleModal";
 import Toast from "@/components/Toast";
 import PageLoader from "@/components/PageLoader";
+import ShareInviteModal from "@/components/ShareInviteModal";
 import type { SplitMember, SplitExpense } from "@/lib/types";
 
 export default function TripDetailPage() {
@@ -77,6 +79,7 @@ export default function TripDetailPage() {
   const [memberToPromote, setMemberToPromote] = useState<SplitMember | null>(null);
   const [memberToRemove, setMemberToRemove] = useState<SplitMember | null>(null);
   const [expenseSearch, setExpenseSearch] = useState("");
+  const [shareModalOpen, setShareModalOpen] = useState(false);
 
   const AVATAR_OPTIONS = ["😎", "🤩", "😊", "🥳", "🧐", "😈", "🦊", "🐻", "🦁", "🐸", "🌸", "⭐"];
 
@@ -404,6 +407,18 @@ export default function TripDetailPage() {
                       <UserPlus size={15} className="text-[#8b6fff]" />
                       Add Member
                     </button>
+                    {canEdit && !trip.archived && (
+                      <button
+                        onClick={() => {
+                          setShareModalOpen(true);
+                          setMenuOpen(false);
+                        }}
+                        className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-white hover:bg-white/[0.04] transition-colors"
+                      >
+                        <Share2 size={15} className="text-[#2ce88a]" />
+                        Share / Invite
+                      </button>
+                    )}
                     {canEdit && (
                       <button
                         onClick={() => {
@@ -1303,6 +1318,18 @@ export default function TripDetailPage() {
       </AnimatePresence>
 
       <AnimatePresence>{toast && <Toast message={toast} />}</AnimatePresence>
+
+      {/* Share Invite Link Modal */}
+      <AnimatePresence>
+        {shareModalOpen && trip && (
+          <ShareInviteModal
+            splitId={tripId}
+            splitName={trip.name}
+            splitEmoji={trip.emoji}
+            onClose={() => setShareModalOpen(false)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

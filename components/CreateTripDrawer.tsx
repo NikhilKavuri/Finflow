@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Plus, Trash2 } from "lucide-react";
+import { X, Plus, Trash2, Mail, User } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface Props {
@@ -12,17 +12,28 @@ interface Props {
     emoji: string,
     members: { name: string; avatar: string; email?: string }[]
   ) => void | Promise<void>;
+  /** Called after successful creation with splitId so parent can show the share modal */
+  onCreated?: (splitId: string) => void;
 }
 
 const EMOJI_OPTIONS = ["💰", "🍕", "🏠", "🎓", "🤝", "🚗", "🎉", "✈️", "⛺", "🎪", "🛒", "🌴"];
 const AVATAR_OPTIONS = ["😎", "🤩", "😊", "🥳", "🧐", "😈", "🦊", "🐻", "🦁", "🐸", "🌸", "⭐"];
 
-export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
+type MemberInputMode = "email" | "name";
+
+interface MemberInput {
+  name: string;
+  avatar: string;
+  email: string;
+  mode: MemberInputMode;
+}
+
+export default function CreateTripDrawer({ onClose, onSubmit, onCreated }: Props) {
   const { user } = useAuth();
   const [name, setName] = useState("");
   const [emoji, setEmoji] = useState("💰");
-  const [members, setMembers] = useState<{ name: string; avatar: string; email?: string }[]>([
-    { name: user?.displayName || "You", avatar: "😎", email: user?.email || undefined },
+  const [members, setMembers] = useState<MemberInput[]>([
+    { name: user?.displayName || "You", avatar: "😎", email: user?.email || "", mode: "email" },
   ]);
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -33,7 +44,7 @@ export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
       next[0] = {
         ...next[0],
         name: user?.displayName || "You",
-        email: user?.email || undefined,
+        email: user?.email || "",
       };
       return next;
     });
@@ -60,7 +71,7 @@ export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
 
   const addMember = () => {
     const nextAvatar = AVATAR_OPTIONS[members.length % AVATAR_OPTIONS.length];
-    setMembers([...members, { name: "", avatar: nextAvatar, email: "" }]);
+    setMembers([...members, { name: "", avatar: nextAvatar, email: "", mode: "email" }]);
   };
 
   const removeMember = (index: number) => {
@@ -68,9 +79,18 @@ export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
     setMembers(members.filter((_, i) => i !== index));
   };
 
-  const updateMember = (index: number, field: "email" | "avatar", value: string) => {
+  const updateMember = (index: number, field: keyof MemberInput, value: string) => {
     if (index === 0 && field !== "avatar") return;
     setMembers(members.map((m, i) => (i === index ? { ...m, [field]: value } : m)));
+  };
+
+  const toggleMemberMode = (index: number) => {
+    if (index === 0) return;
+    setMembers(members.map((m, i) => {
+      if (i !== index) return m;
+      const newMode: MemberInputMode = m.mode === "email" ? "name" : "email";
+      return { ...m, mode: newMode, name: newMode === "name" ? m.name : "", email: newMode === "email" ? m.email : "" };
+    }));
   };
 
   const handleSubmit = async () => {
@@ -79,9 +99,11 @@ export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
       return;
     }
 
-    const validMembers = members.filter((m, index) =>
-      index === 0 || m.email?.trim() || m.name.trim()
-    );
+    const validMembers = members.filter((m, index) => {
+      if (index === 0) return true;
+      if (m.mode === "email") return m.email?.trim();
+      return m.name?.trim();
+    });
 
     if (validMembers.length < 1) {
       setError("Add at least 1 member");
@@ -95,9 +117,9 @@ export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
         name.trim(),
         emoji,
         validMembers.map((m, index) => ({
-          name: index === 0 ? m.name.trim() || "You" : m.name.trim(),
+          name: index === 0 ? m.name.trim() || "You" : (m.mode === "name" ? m.name.trim() : ""),
           avatar: m.avatar,
-          email: m.email?.trim() || undefined,
+          email: m.mode === "email" ? m.email?.trim() || undefined : undefined,
         }))
       );
     } catch (err) {
@@ -211,43 +233,87 @@ export default function CreateTripDrawer({ onClose, onSubmit }: Props) {
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: "auto" }}
                     exit={{ opacity: 0, height: 0 }}
-                    className="flex items-center gap-2"
+                    className="space-y-1.5"
                   >
-                    <div className="relative group">
-                      <button
-                        className="w-10 h-10 rounded-xl bg-[#252533] border border-white/[0.06] flex items-center justify-center text-lg hover:border-[#6c47ff]/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        disabled={isSubmitting}
-                        onClick={() => {
-                          const currentIdx = AVATAR_OPTIONS.indexOf(member.avatar);
-                          const nextIdx = (currentIdx + 1) % AVATAR_OPTIONS.length;
-                          updateMember(index, "avatar", AVATAR_OPTIONS[nextIdx]);
-                        }}
-                      >
-                        {member.avatar}
-                      </button>
+                    <div className="flex items-center gap-2">
+                      <div className="relative group">
+                        <button
+                          className="w-10 h-10 rounded-xl bg-[#252533] border border-white/[0.06] flex items-center justify-center text-lg hover:border-[#6c47ff]/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          disabled={isSubmitting}
+                          onClick={() => {
+                            const currentIdx = AVATAR_OPTIONS.indexOf(member.avatar);
+                            const nextIdx = (currentIdx + 1) % AVATAR_OPTIONS.length;
+                            updateMember(index, "avatar", AVATAR_OPTIONS[nextIdx]);
+                          }}
+                        >
+                          {member.avatar}
+                        </button>
+                      </div>
+
+                      {index === 0 ? (
+                        /* Creator row — always shows name, locked */
+                        <input
+                          className="flex-1 min-w-0 bg-[#1e1e28] border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-[#5a5a6e] outline-none disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          placeholder="You"
+                          type="text"
+                          value={member.name}
+                          disabled
+                        />
+                      ) : (
+                        <>
+                          {/* Mode toggle button */}
+                          <motion.button
+                            whileTap={{ scale: 0.9 }}
+                            onClick={() => !isSubmitting && toggleMemberMode(index)}
+                            disabled={isSubmitting}
+                            className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-all border ${
+                              member.mode === "email"
+                                ? "bg-[#6c47ff]/15 border-[#6c47ff]/30 text-[#8b6fff]"
+                                : "bg-[#2ce88a]/15 border-[#2ce88a]/30 text-[#2ce88a]"
+                            } disabled:opacity-50`}
+                            title={member.mode === "email" ? "Switch to name" : "Switch to email"}
+                          >
+                            {member.mode === "email" ? <Mail size={14} /> : <User size={14} />}
+                          </motion.button>
+
+                          {/* Input field based on mode */}
+                          <input
+                            className="flex-1 min-w-0 bg-[#1e1e28] border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-[#5a5a6e] outline-none focus:border-[#8b6fff] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            placeholder={member.mode === "email" ? `Member ${index + 1} email` : `Member ${index + 1} name`}
+                            type={member.mode === "email" ? "email" : "text"}
+                            value={member.mode === "email" ? member.email : member.name}
+                            disabled={isSubmitting}
+                            onChange={(e) => {
+                              if (member.mode === "email") {
+                                updateMember(index, "email", e.target.value);
+                              } else {
+                                updateMember(index, "name", e.target.value);
+                              }
+                              setError("");
+                            }}
+                          />
+                        </>
+                      )}
+
+                      {members.length > 1 && index > 0 && (
+                        <motion.button
+                          whileTap={isSubmitting ? undefined : { scale: 0.9 }}
+                          onClick={isSubmitting ? undefined : () => removeMember(index)}
+                          disabled={isSubmitting}
+                          className="w-8 h-8 rounded-full bg-red-500/10 flex items-center justify-center text-red-400 disabled:opacity-50"
+                        >
+                          <Trash2 size={13} />
+                        </motion.button>
+                      )}
                     </div>
 
-                    <input
-                      className="flex-1 min-w-0 bg-[#1e1e28] border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-[#5a5a6e] outline-none focus:border-[#8b6fff] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                      placeholder={index === 0 ? "You" : `Member ${index + 1} email`}
-                      type={index === 0 ? "text" : "email"}
-                      value={index === 0 ? member.name : member.email || ""}
-                      disabled={index === 0 || isSubmitting}
-                      onChange={(e) => {
-                        updateMember(index, "email", e.target.value);
-                        setError("");
-                      }}
-                    />
-
-                    {members.length > 1 && index > 0 && (
-                      <motion.button
-                        whileTap={isSubmitting ? undefined : { scale: 0.9 }}
-                        onClick={isSubmitting ? undefined : () => removeMember(index)}
-                        disabled={isSubmitting}
-                        className="w-8 h-8 rounded-full bg-red-500/10 flex items-center justify-center text-red-400 disabled:opacity-50"
-                      >
-                        <Trash2 size={13} />
-                      </motion.button>
+                    {/* Mode hint text for non-creator members */}
+                    {index > 0 && (
+                      <div className="pl-12 text-[10px] text-[#5a5a6e]">
+                        {member.mode === "email"
+                          ? "Will be linked to their account if registered"
+                          : "Add by name — share via invite link later"}
+                      </div>
                     )}
                   </motion.div>
                 ))}

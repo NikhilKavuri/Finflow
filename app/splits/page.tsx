@@ -11,6 +11,8 @@ import CreateTripDrawer from "@/components/CreateTripDrawer";
 import NotificationIcon from "@/components/NotificationIcon";
 import Toast from "@/components/Toast";
 import PageLoader from "@/components/PageLoader";
+import ShareInviteModal from "@/components/ShareInviteModal";
+import type { SplitSession } from "@/lib/types";
 
 export default function TripsPage() {
   const router = useRouter();
@@ -18,6 +20,7 @@ export default function TripsPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [shareModalSplit, setShareModalSplit] = useState<SplitSession | null>(null);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -172,10 +175,26 @@ export default function TripsPage() {
           <CreateTripDrawer
             onClose={() => setDrawerOpen(false)}
             onSubmit={async (name, emoji, members) => {
-              await createSplit(name, emoji, members);
+              const split = await createSplit(name, emoji, members);
               setDrawerOpen(false);
               showToast("Split created! 🎉");
+              // Auto-show share modal if the split has other members
+              if (split && members.length > 1) {
+                setShareModalSplit(split);
+              }
             }}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Share Invite Link Modal (auto-shown after creation) */}
+      <AnimatePresence>
+        {shareModalSplit && (
+          <ShareInviteModal
+            splitId={shareModalSplit.id}
+            splitName={shareModalSplit.name}
+            splitEmoji={shareModalSplit.emoji}
+            onClose={() => setShareModalSplit(null)}
           />
         )}
       </AnimatePresence>

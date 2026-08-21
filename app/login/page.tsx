@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mail, Lock, User, Eye, EyeOff, ArrowRight, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -10,6 +10,8 @@ type AuthMode = "signin" | "signup";
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get("redirect");
   const { user, loading, authError, signInWithGoogle, signUpWithEmail, signInWithEmail, clearError } = useAuth();
   const [mode, setMode] = useState<AuthMode>("signin");
   const [email, setEmail] = useState("");
@@ -21,9 +23,9 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!loading && user) {
-      router.replace("/");
+      router.replace(redirectTo || "/");
     }
-  }, [user, loading, router]);
+  }, [user, loading, router, redirectTo]);
 
   const switchMode = () => {
     setMode((m) => (m === "signin" ? "signup" : "signin"));

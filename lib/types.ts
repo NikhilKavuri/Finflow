@@ -131,6 +131,20 @@ export interface SplitNotification {
   source?: "user" | "splitInvite";
 }
 
+// ── Invite Link Types ───────────────────────────────────────
+
+export interface SplitInviteLink {
+  token: string;
+  splitId: string;
+  creatorUid: string;
+  creatorName: string;
+  splitName: string;
+  splitEmoji: string;
+  createdAt: string;
+  expiresAt: string;
+  status: "active" | "expired";
+}
+
 // ── User Profile (for email lookup) ─────────────────────────
 
 export interface UserProfile {
